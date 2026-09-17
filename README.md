@@ -2,6 +2,12 @@
 
 An interactive granular equilibrium laboratory written in JavaScript. The rigid-body 2D simulation runs entirely in the browser, with no application server or account required.
 
+## Live application
+
+Open [UnBaAct on GitHub Pages](https://gcastellazzi.github.io/UnBaAct/). The browser runs the complete simulation, including local photo tracing; no server installation is needed.
+
+The [Deploy GitHub Pages workflow](.github/workflows/pages.yml) tests and builds the app with Node.js 24, then publishes `dist` on each push to `main`. GitHub Pages uses **GitHub Actions** as its publishing source. Manual deployment is available through the workflow’s **Run workflow** button.
+
 ## Run locally
 
 Requires Node.js 22.12+ (or Node 24 LTS) and npm.
@@ -107,3 +113,11 @@ For a hosted application, build with `npm run build` and serve `dist/` through a
 - **Observe:** independently show or hide normal forces, tangential forces, unbalanced resultants, applied loads and boundary reactions. Boundary totals show Rx and Ry in newtons for each active support; these are forces exerted by the boundary on the blocks.
 - **Groups:** adjust μ independently for each group, create groups, assign the selected block and enable colour by group.
 - **Block:** inspect the selected block with force arrows and labels in newtons (Fn, Ft, R, Load, W and ΣF), apply a downward load or remove the block. The diagram always shows all forces independently of Observe visibility switches, with neighbour IDs on contact arrows and a numerical summary of the reaction from each neighbouring block or boundary. Weight W is included to explain the balance. Arrow lengths use a logarithmic scale; numerical labels give their actual magnitudes. Reaction arrows represent total normal plus tangential support force; they are not additional forces to add again to Fn and Ft.
+
+### Monochrome load shading and load spreading
+
+In **Observe → Block colouring**, choose **Load shading · darker = higher**. This replaces the default chain-and-arrow display with grayscale fills; overlays can be re-enabled individually. Material and group colours remain available. Use **Scene maximum** for automatic normalization or **Fixed reference** to compare cases with the same scale. Values at or above the reference use the darkest shade. Fill opacity still applies.
+
+The scalar indicator is **(sum of incident normal-contact force magnitudes + weight + applied downward load) / 2**, in newtons. It is a conventional block-load indicator, not stress, pressure, a tensor or an unbalanced resultant; it includes the external forces to avoid underrepresenting a loaded boundary block. It is computed from the current simulation snapshot, so allow the wall to settle before comparing. No fixed spreading angle or illustrative force path is imposed.
+
+Load **Load spread · side-by-side** from Masonry examples and press **Play**. Both walls receive **150 N**: the left wall has one loaded top brick; the right has a wide monolithic distributing block occupying two courses. They use identical brick dimensions and material properties within the comparison, with a common **150 N** grayscale reference. The walls are scaled copies of the standalone **Load spread · concentrated** and **Load spread · distributing block** examples. The standalone examples reach equilibrium with two and three direct supporting blocks respectively. All configurations can be edited, loaded, shaken and exported; load colouring and its reference are also saved.

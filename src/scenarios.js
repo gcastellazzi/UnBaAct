@@ -70,6 +70,27 @@ export const OPUS_SCENARIOS = [
     description:
       "Irregular stonework with regular edge blocks and squared window jambs supporting one monolithic lintel.",
   },
+  {
+    id: "load-comparison",
+    name: "Load spread · side-by-side",
+    source: "Load_spread_comparison",
+    description:
+      "Two scaled walls under identical 150 N loads: single loaded brick on the left, monolithic distributing block on the right. Same grayscale reference.",
+  },
+  {
+    id: "load-concentrated",
+    name: "Load spread · concentrated",
+    source: "Load_concentrated",
+    description:
+      "150 N on one top brick in staggered masonry. Compare with the distributing block using the same 150 N colour scale.",
+  },
+  {
+    id: "load-distributed",
+    name: "Load spread · distributing block",
+    source: "Load_distributed",
+    description:
+      "The same 150 N on one wide monolithic block spanning two courses. Compare the wider contact-load paths below it.",
+  },
 ];
 const LEFT = 1.025,
   RIGHT = 10.975,
@@ -244,7 +265,25 @@ export function generateOpus(id, seed = 42) {
     out = [],
     brick = ["#c89068", "#d3a17b", "#dcb18b"],
     stone = ["#afb1aa", "#c4c4ba", "#d5d2c6"];
-  if (id === "mixtum") {
+  if (id === "load-comparison") {
+    for (const [distributed, offset] of [
+      [false, 1.075],
+      [true, 6.475],
+    ]) {
+      const wall = [];
+      loadWall(wall, distributed);
+      for (const b of wall)
+        out.push({
+          ...b,
+          x: offset + (b.x - 1.05) * 0.45,
+          y: 0.02 + (b.y - 0.02) * 0.45,
+          r: b.r * 0.45,
+          vertices: b.vertices.map((v) => v * 0.45),
+        });
+    }
+  } else if (id === "load-concentrated" || id === "load-distributed")
+    loadWall(out, id === "load-distributed");
+  else if (id === "mixtum") {
     courses(out, rand, 0.015, 0.9, 0.3, 1.8, stone, true);
     courses(out, rand, 0.9, 1.8, 0.3, 2.15, brick);
     rubble(out, rand, 1.8, 6.85);
@@ -450,4 +489,47 @@ function windowWall(rand, out, irregular) {
     "#bda477",
   );
   out.push({ ...lintel, role: "lintel" });
+}
+
+function loadWall(out, distributed) {
+  const left = 1.05,
+    right = 10.95,
+    pitch = 1.65,
+    height = 0.52,
+    gap = 0.02;
+  const add = (l, r, b, t, load = 0) => {
+    const stone = block(
+      rect((l + r) / 2, (b + t) / 2, r - l, t - b),
+      "#cba983",
+    );
+    out.push({
+      ...stone,
+      role: load && distributed ? "load-spreader" : "brick",
+      group: "regular",
+      load,
+    });
+  };
+  for (let row = 0; row < 14; row++) {
+    const cuts = [left];
+    for (
+      let x = left + (row % 2 ? pitch / 2 : pitch);
+      x < right - 1e-6;
+      x += pitch
+    )
+      cuts.push(x);
+    cuts.push(right);
+    for (let k = 1; k < cuts.length; k++) {
+      const l = cuts[k - 1] + gap / 2,
+        r = cuts[k] - gap / 2,
+        b = 0.02 + row * 0.54,
+        t = b + height;
+      if (distributed && row >= 12) {
+        if (l < 4.35) add(l, Math.min(r, 4.34), b, t);
+        if (r > 7.65) add(Math.max(l, 7.66), r, b, t);
+      } else
+        add(l, r, b, t, !distributed && row === 13 && l < 6 && r > 6 ? 150 : 0);
+    }
+  }
+  if (distributed)
+    add(4.36, 7.64, 0.02 + 12 * 0.54, 0.02 + 13 * 0.54 + height, 150);
 }

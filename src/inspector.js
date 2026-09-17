@@ -9,6 +9,11 @@ export function setupInspector() {
   const observe = panel.querySelector(".sidebar-content");
   observe.id = "tab-observe";
   observe.setAttribute("role", "tabpanel");
+  const colors = document.createElement("div");
+  colors.className = "load-color-controls";
+  colors.innerHTML =
+    '<label>Block colouring<select id="blockColorMode"><option value="material">Material colours</option><option value="groups">Group colours</option><option value="load">Load shading · darker = higher</option></select></label><div id="loadColorLegend" hidden title="Load indicator (N) = (sum of normal contact magnitudes + weight + applied load) / 2"><div class="load-gray-scale"></div><div class="scale-label"><span>Lower load</span><span>Higher load</span></div><label>Load scale<select id="loadScale"><option value="auto">Scene maximum</option><option value="fixed">Fixed reference</option></select></label><label id="loadReferenceLabel" hidden>Darkest load (N)<input id="loadReference" type="number" min=".001" max="10000000" value="150" step="10"></label><p id="loadColorValue" class="hint"></p><p class="hint">Contact-load indicator, not stress. Play computes the contact forces.</p></div>';
+  observe.prepend(colors);
   const tabs = document.createElement("div");
   tabs.className = "inspector-tabs";
   tabs.setAttribute("role", "tablist");

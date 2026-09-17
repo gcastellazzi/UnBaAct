@@ -15,8 +15,9 @@ export function random(seed) {
   };
 }
 export function inferGroup(spec) {
-  return ["brick", "corner-stone", "lintel"].includes(spec.role) ||
-    ["rectangle", "square", "triangle"].includes(spec.shape)
+  return ["brick", "corner-stone", "lintel", "load-spreader"].includes(
+    spec.role,
+  ) || ["rectangle", "square", "triangle"].includes(spec.shape)
     ? "regular"
     : "irregular";
 }

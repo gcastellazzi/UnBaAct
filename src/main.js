@@ -1,3 +1,4 @@
+import { blockLoads, loadShade } from "./load-colors.js";
 import {
   setupInspector,
   defaultGroups,
@@ -60,6 +61,8 @@ let sim,
   acc = 0,
   last = 0;
 let modelBounds;
+let loadValues = new Map(),
+  loadColorReference = 1;
 let photo = null,
   draft = [],
   calibration = [],
@@ -172,6 +175,31 @@ for (const [a, b] of [
     $("#" + a).checked = $("#" + b).checked;
   };
 }
+$("#blockColorMode").onchange = () => {
+  const mode = $("#blockColorMode").value;
+  $("#groupColors").checked = mode === "groups";
+  $("#loadColorLegend").hidden = mode !== "load";
+  if (mode === "load") {
+    for (const id of [
+      "chains",
+      "normalForces",
+      "tangentForces",
+      "arrows",
+      "boundaryForces",
+    ]) {
+      $("#" + id).checked = false;
+    }
+  }
+};
+$("#groupColors").onchange = () => {
+  $("#blockColorMode").value = $("#groupColors").checked
+    ? "groups"
+    : "material";
+  $("#loadColorLegend").hidden = true;
+};
+$("#loadScale").onchange = () => {
+  $("#loadReferenceLabel").hidden = $("#loadScale").value !== "fixed";
+};
 renderGroups();
 function rebuild(specs) {
   sim?.dispose();
@@ -269,6 +297,19 @@ $("#loadOpus").onclick = () => {
   ++photoLoadToken;
   $("#blockOpacity").value = 100;
   syncPhotoControls();
+  const loadExample = $("#opus").value.startsWith("load-");
+  if (loadExample) {
+    $("#thickness").value = 1;
+    $("#density").value = 1;
+    $("#blockColorMode").value = "load";
+    $("#blockColorMode").dispatchEvent(new Event("change"));
+    $("#loadScale").value = "fixed";
+    $("#loadScale").dispatchEvent(new Event("change"));
+    $("#loadReference").value = 150;
+    $("#blockOpacity").value = 100;
+  }
+  if ($("#opus").value === "load-comparison")
+    modelBounds = { left: 1, right: 11, bottom: 0, top: 4.5 };
   rebuild(generateOpus($("#opus").value, +$("#seed").value));
   $("#tool").value = "select";
   message("Example loaded. Press Play to test stability.");
@@ -735,6 +776,11 @@ $("#export").onclick = () => {
           particles: sim.specs(),
           initial,
           photo: photo?.data,
+          view: {
+            blockColorMode: $("#blockColorMode").value,
+            loadScale: $("#loadScale").value,
+            loadReference: +$("#loadReference").value || 150,
+          },
         },
         null,
         2,
@@ -805,6 +851,7 @@ $("#import").onchange = async (e) => {
               "rounded-stone",
               "rubble",
               "lintel",
+              "load-spreader",
               "traced-block",
             ].includes(p.role)) ||
           (p.shape === "rectangle" &&
@@ -871,6 +918,23 @@ $("#import").onchange = async (e) => {
     $("#gravity").value = data.config.gravity;
     $("#leftWall").checked = data.config.leftWall !== false;
     $("#rightWall").checked = data.config.rightWall !== false;
+    if (data.view) {
+      $("#blockColorMode").value = ["material", "groups", "load"].includes(
+        data.view.blockColorMode,
+      )
+        ? data.view.blockColorMode
+        : "material";
+      $("#blockColorMode").dispatchEvent(new Event("change"));
+      $("#loadScale").value =
+        data.view.loadScale === "fixed" ? "fixed" : "auto";
+      $("#loadScale").dispatchEvent(new Event("change"));
+      $("#loadReference").value =
+        Number.isFinite(data.view.loadReference) &&
+        data.view.loadReference > 0 &&
+        data.view.loadReference <= 10000000
+          ? data.view.loadReference
+          : 150;
+    }
     rebuild(data.particles);
     $("#mu").dispatchEvent(new Event("input"));
     message("Experiment imported.");
@@ -914,13 +978,15 @@ function particle(spec, p, a, ghost = false) {
   }
   ctx.fillStyle = ghost
     ? "#dce5e540"
-    : $("#groupColors").checked && !ghost
-      ? (groups.find((g) => g.id === spec.group)?.color ?? "#b7c8bd")
-      : spec.color
-        ? spec.color
-        : spec.shape === "rectangle"
-          ? "#c8b698"
-          : ["#a7c9c4", "#c5d9c9", "#d7d2b9"][(spec.id || 0) % 3];
+    : $("#blockColorMode").value === "load" && !ghost
+      ? loadShade(loadValues.get(spec.id) ?? 0, loadColorReference)
+      : $("#groupColors").checked && !ghost
+        ? (groups.find((g) => g.id === spec.group)?.color ?? "#b7c8bd")
+        : spec.color
+          ? spec.color
+          : spec.shape === "rectangle"
+            ? "#c8b698"
+            : ["#a7c9c4", "#c5d9c9", "#d7d2b9"][(spec.id || 0) % 3];
   ctx.strokeStyle = ghost
     ? "#a0b5b5"
     : spec === selected
@@ -941,12 +1007,16 @@ function particle(spec, p, a, ghost = false) {
     ctx.strokeStyle = "#5c918b66";
     ctx.stroke();
   }
-  if (!ghost && spec.role === "lintel") {
-    ctx.fillStyle = "#514a3c";
+  if (!ghost && ["lintel", "load-spreader"].includes(spec.role)) {
+    ctx.fillStyle =
+      $("#blockColorMode").value === "load" &&
+      (loadValues.get(spec.id) ?? 0) / loadColorReference > 0.55
+        ? "#f2f2ed"
+        : "#514a3c";
     ctx.font = "600 11px system-ui";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillText("LINTEL", 0, 0);
+    ctx.fillText(spec.role === "load-spreader" ? "SPREADER" : "LINTEL", 0, 0);
   }
   ctx.restore();
 }
@@ -977,6 +1047,18 @@ function arrow(p, x, y, color) {
   ctx.stroke();
 }
 function draw() {
+  loadValues =
+    sim.time > 0
+      ? blockLoads(sim.items, sim.contacts, sim.config.gravity)
+      : new Map();
+  loadColorReference =
+    $("#loadScale").value === "fixed"
+      ? Math.max(0.001, +$("#loadReference").value || 150)
+      : Math.max(0.001, ...loadValues.values());
+  $("#loadColorValue").textContent =
+    sim.time === 0
+      ? "Press Play to compute loads."
+      : `White: 0 N · Black: ${loadColorReference.toFixed(2)} N${$("#loadScale").value === "fixed" ? " or above" : " (scene maximum)"}`;
   ctx.clearRect(0, 0, W, H);
   if (photo && photo.data.visible) {
     const b = photoBounds(photo),
@@ -1082,7 +1164,27 @@ function draw() {
   for (const i of sim.items)
     if (i.load && $("#loadForces").checked) {
       const p = i.body.translation();
-      arrow({ x: p.x, y: p.y + i.r + 0.6 }, 0, -i.load, "#3479c9");
+      const a = i.body.rotation();
+      let top = i.r;
+      if (i.vertices)
+        top = Math.max(
+          ...i.vertices
+            .filter((_, k) => k % 2 === 0)
+            .map(
+              (x, k) => x * Math.sin(a) + i.vertices[k * 2 + 1] * Math.cos(a),
+            ),
+        );
+      else if (["rectangle", "square"].includes(i.shape))
+        top =
+          (Math.abs(Math.sin(a)) * (i.width ?? i.r * 2)) / 2 +
+          (Math.abs(Math.cos(a)) * (i.height ?? i.r * 2)) / 2;
+      const origin = { x: p.x, y: p.y + top + 0.7 };
+      arrow(origin, 0, -i.load, "#3479c9");
+      const label = screen(origin);
+      ctx.fillStyle = "#3479c9";
+      ctx.font = "600 11px system-ui";
+      ctx.textAlign = "left";
+      ctx.fillText(`${i.load.toFixed(0)} N`, label.x + 8, label.y + 8);
     }
   for (const id of ["removeSelected", "applyLoad", "clearLoad"])
     $("#" + id).disabled = !selected;
@@ -1145,7 +1247,7 @@ function draw() {
     const r = selected.residual;
     const cs = sim.contacts.filter((c) => c.a === selected || c.b === selected);
     $("#selection").innerHTML =
-      `<strong>Particle ${selected.id} · ${{ disk: "disk", square: "square", triangle: "triangle", rectangle: "rectangle", polygon: "polygonal block" }[selected.shape]}</strong>${selected.role ? `<p class="block-role">${{ brick: "Regular brick", "corner-stone": "Corner stone", "rounded-stone": "Rounded stone", rubble: "Irregular stone", lintel: "Monolithic lintel", "traced-block": "Photo-traced block" }[selected.role]}</p>` : ""}<dl><dt>Mass</dt><dd>${selected.body.mass().toFixed(3)} kg</dd><dt>Vertical load</dt><dd>${selected.load.toFixed(2)} N</dd><dt>Contacts</dt><dd>${cs.length}</dd><dt>Maximum normal force</dt><dd>${Math.max(0, ...cs.map((c) => c.fn)).toFixed(3)} N</dd><dt>Resultant Rx</dt><dd>${r.x.toFixed(3)} N</dd><dt>Resultant Ry</dt><dd>${r.y.toFixed(3)} N</dd><dt>Residual moment</dt><dd>${selected.torque.toFixed(3)} N·m</dd></dl>${sim.time === 0 ? '<p class="hint">Start the experiment to compute forces.</p>' : ""}`;
+      `<strong>Particle ${selected.id} · ${{ disk: "disk", square: "square", triangle: "triangle", rectangle: "rectangle", polygon: "polygonal block" }[selected.shape]}</strong>${selected.role ? `<p class="block-role">${{ brick: "Regular brick", "corner-stone": "Corner stone", "rounded-stone": "Rounded stone", rubble: "Irregular stone", lintel: "Monolithic lintel", "load-spreader": "Load-spreading block", "traced-block": "Photo-traced block" }[selected.role]}</p>` : ""}<dl><dt>Mass</dt><dd>${selected.body.mass().toFixed(3)} kg</dd><dt>Load indicator</dt><dd>${(loadValues.get(selected.id) ?? 0).toFixed(2)} N</dd><dt>Vertical load</dt><dd>${selected.load.toFixed(2)} N</dd><dt>Contacts</dt><dd>${cs.length}</dd><dt>Maximum normal force</dt><dd>${Math.max(0, ...cs.map((c) => c.fn)).toFixed(3)} N</dd><dt>Resultant Rx</dt><dd>${r.x.toFixed(3)} N</dd><dt>Resultant Ry</dt><dd>${r.y.toFixed(3)} N</dd><dt>Residual moment</dt><dd>${selected.torque.toFixed(3)} N·m</dd></dl>${sim.time === 0 ? '<p class="hint">Start the experiment to compute forces.</p>' : ""}`;
   } else
     $("#selection").textContent =
       "Click a particle to inspect its mass, forces and moment.";

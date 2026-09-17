@@ -29,3 +29,11 @@ Brick bands are dynamic blocks, not fixed constraints. Loading from the menu ena
 **Physics:** dry rigid 2D blocks, with no mortar, cohesion or three-dimensional masonry core. The simulation does not assess the structural safety of real Roman masonry.
 
 Terminology references: [Italian Ministry of Culture, Roman masonry techniques](https://antiquariumportotorres.cultura.gov.it/it/percorsi-e-collezioni/le-opere-murarie) and [University of Padua, opus spicatum record](https://tess.beniculturali.unipd.it/web/scheda/?recid=11957).
+
+## Load-spreading examples
+
+- [Side-by-side comparison](Load_spread_comparison.json): same 150 N concentrated load on two walls, with a single loaded brick on the left and a wide distributing block on the right.
+- [Concentrated load](Load_concentrated.json): a 14-course staggered wall with 150 N on one top brick.
+- [Distributing block](Load_distributed.json): the same wall and load, with one wider block spanning two top courses.
+
+These examples open with monochrome load shading and a shared 150 N reference. Press Play to compute the contact loads; shade intensities come from the simulation rather than a predefined spreading pattern.

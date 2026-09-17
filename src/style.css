@@ -1104,3 +1104,16 @@ dialog a {
 .block-force-list p {
   margin: 6px 0;
 }
+.load-gray-scale {
+  height: 8px;
+  border-radius: 5px;
+  background: linear-gradient(to right, #f8f8f8, #212121);
+  border: 1px solid #d4d9d5;
+}
+.load-color-controls {
+  margin-bottom: 10px;
+}
+.load-color-controls .hint {
+  font-size: 9px;
+  line-height: 1.5;
+}

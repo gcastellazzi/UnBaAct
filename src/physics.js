@@ -81,7 +81,7 @@ export class Simulation {
     }
   }
   add(spec) {
-    const s = { shape: "disk", r: 0.34, angle: 0, load: 0, ...spec };
+    const s = { shape: "disk", r: 0.34, angle: 0, load: 0, loadX: 0, ...spec };
     s.group ??= inferGroup(s);
     let desc, parts;
     if (s.shape === "disk") desc = RAPIER.ColliderDesc.ball(s.r);
@@ -142,6 +142,7 @@ export class Simulation {
           "width",
           "height",
           "load",
+          "loadX",
           "color",
           "role",
           "photoId",
@@ -200,16 +201,22 @@ export class Simulation {
       i.body.applyImpulse({ x: i.body.mass() * deltaV, y: 0 }, true);
     this.quiet = 0;
   }
-  setLoad(item, force) {
-    if (!this.items.includes(item) || !Number.isFinite(force) || force < 0)
+  setLoad(item, force, horizontal = 0) {
+    if (
+      !this.items.includes(item) ||
+      !Number.isFinite(force) ||
+      force < 0 ||
+      !Number.isFinite(horizontal)
+    )
       return;
     item.load = force;
+    item.loadX = horizontal;
     this.quiet = 0;
   }
   step() {
     for (const i of this.items) {
       i.body.resetForces(true);
-      if (i.load) i.body.addForce({ x: 0, y: -i.load }, true);
+      if (i.load || i.loadX) i.body.addForce({ x: i.loadX, y: -i.load }, true);
     }
     const prev = this.items.map((i) => ({
       v: i.body.linvel(),

@@ -40,8 +40,20 @@ export function setupInspector() {
   block.hidden = true;
   block.setAttribute("role", "tabpanel");
   block.innerHTML =
-    '<canvas id="blockDiagram" aria-label="Selected block force diagram"></canvas><div id="blockForceList" class="block-force-list"></div><p class="hint">Forces on the block · N. Arrow lengths use a logarithmic scale. All forces are shown here independently of Observe filters. Fn / Ft: contact components; # identifies the neighbouring block. R: boundary reaction (Fn + Ft), not an extra force. W: weight. ΣF: resultant.</p>';
+    '<canvas id="blockDiagram" aria-label="Selected block force diagram"></canvas><div id="blockForceList" class="block-force-list"></div><p class="hint">Forces on the block · N. Arrow lengths use a logarithmic scale. All forces are shown here independently of Observe filters. Fn / Ft: contact components; # identifies the neighbouring block. R: boundary reaction (Fn + Ft), not an extra force. W: weight. Fx / Fy: applied force components; F applied is their vector sum, not an extra force. ΣF: unbalanced resultant.</p>';
   block.append($("#selectedPanel .selected-fields"));
+  const horizontal = document.createElement("label");
+  horizontal.textContent = "Horizontal load Fx (N) · + right";
+  horizontal.innerHTML +=
+    '<input id="loadX" type="number" min="-1000000" max="1000000" step=".5" value="0">';
+  block.querySelector(".load-controls").prepend(horizontal);
+  block.querySelector("#applyLoad").textContent = "Apply force";
+  block.querySelector("#clearLoad").textContent = "Clear force";
+  const jointTools = document.createElement("details");
+  jointTools.className = "joint-tools";
+  jointTools.innerHTML =
+    '<summary>Joints & small fillers</summary><label class="check"><input id="imperfections" type="checkbox"> Imperfections</label><button id="insertSnecks">Insert snecks / flakes</button><p class="hint">While paused: tiny loose circles in random joints; polygonal flakes fill small voids. They remain dynamic and can be removed individually.</p>';
+  document.querySelector("#corners").after(jointTools);
   panel.append(groups, block);
   const activate = (button) => {
     for (const b of tabs.children) {
@@ -218,7 +230,9 @@ export function drawBlockDiagram(canvas, item, sim) {
       );
   }
   arrow(p, 0, -item.body.mass() * sim.config.gravity, "#657972", "W");
-  arrow(p, 0, -item.load, "#3479c9", "Load");
+  arrow(p, item.loadX || 0, 0, "#27845c", "Fx");
+  arrow(p, 0, -item.load, "#3479c9", "Fy");
+  arrow(p, item.loadX || 0, -item.load, "#bc4545", "F applied");
   arrow(p, item.residual.x, item.residual.y, "#e02e67", "ΣF");
   const reactions = new Map();
   for (const c of sim.contacts.filter((c) => c.a === item || c.b === item)) {

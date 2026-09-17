@@ -1,3 +1,4 @@
+import { generateJointFillers } from "./joint-fillers.js";
 import { blockLoads, loadShade } from "./load-colors.js";
 import {
   setupInspector,
@@ -211,6 +212,9 @@ function rebuild(specs) {
   acc = 0;
   draft = [];
   calibration = [];
+  $("#imperfections").checked = sim.items.some(
+    (i) => i.role === "imperfection",
+  );
   updatePlay();
   updateCamera();
 }
@@ -235,6 +239,10 @@ function play() {
   updatePlay();
 }
 function edited() {
+  if (selected && !sim.items.includes(selected)) {
+    selected = null;
+    drag = null;
+  }
   sim.time = 0;
   sim.contacts = [];
   sim.quiet = 0;
@@ -341,6 +349,46 @@ function removeSelected() {
   if (sim.time === 0) initial = sim.specs();
 }
 $("#removeSelected").onclick = removeSelected;
+function insertFillers(kind) {
+  if (running || draft.length) {
+    message("Pause playback and close the outline first.");
+    return;
+  }
+  if (kind === "imperfection")
+    for (const i of [...sim.items])
+      if (i.role === "imperfection") sim.remove(i);
+  const fillers = generateJointFillers(
+    sim.specs(),
+    kind,
+    +$("#seed").value,
+    Math.min(kind === "imperfection" ? 40 : 60, 400 - sim.items.length),
+  );
+  for (const filler of fillers) sim.add({ ...filler, photoId: photo?.data.id });
+  edited();
+  $("#imperfections").checked = sim.items.some(
+    (i) => i.role === "imperfection",
+  );
+  message(
+    `${fillers.length} ${kind === "imperfection" ? "joint imperfections" : "snecks / flakes"} inserted without initial overlap.`,
+  );
+}
+$("#imperfections").onchange = () => {
+  if (running || draft.length) {
+    $("#imperfections").checked = sim.items.some(
+      (i) => i.role === "imperfection",
+    );
+    message("Pause playback and close the outline first.");
+    return;
+  }
+  if ($("#imperfections").checked) insertFillers("imperfection");
+  else {
+    for (const i of [...sim.items])
+      if (i.role === "imperfection") sim.remove(i);
+    edited();
+  }
+};
+$("#insertSnecks").onclick = () => insertFillers("sneck");
+
 $("#kick").oninput = () =>
   ($("#kickValue").textContent = (+$("#kick").value).toFixed(2) + " m/s");
 function kick(direction) {
@@ -361,14 +409,23 @@ $("#kickLeft").onclick = () => kick(-1);
 $("#kickRight").onclick = () => kick(1);
 $("#applyLoad").onclick = () => {
   if (!selected) return;
-  const force = +$("#load").value;
-  if (!Number.isFinite(force) || force < 0 || force > 1000000) {
-    message("Enter a load between 0 and 1000000 N.");
+  const force = +$("#load").value,
+    horizontal = +$("#loadX").value;
+  if (
+    !Number.isFinite(force) ||
+    force < 0 ||
+    force > 1000000 ||
+    !Number.isFinite(horizontal) ||
+    Math.abs(horizontal) > 1000000
+  ) {
+    message("Use Fy 0–1000000 N downward and Fx −1000000–1000000 N.");
     return;
   }
-  sim.setLoad(selected, force);
+  sim.setLoad(selected, force, horizontal);
   if (sim.time === 0) initial = sim.specs();
-  message("Load of " + force + " N applied. Press Play to observe.");
+  message(
+    `Load applied: Fx ${horizontal} N, Fy −${force} N. Press Play to observe.`,
+  );
 };
 $("#clearLoad").onclick = () => {
   if (selected) {
@@ -833,7 +890,7 @@ $("#import").onchange = async (e) => {
             p.shape,
           ) ||
           ![p.x, p.y, p.r, p.angle].every(Number.isFinite) ||
-          p.r < 0.005 ||
+          p.r < 0.0005 ||
           p.r > 50 ||
           (p.shape === "polygon" &&
             (!Array.isArray(p.vertices) ||
@@ -852,6 +909,9 @@ $("#import").onchange = async (e) => {
               "rubble",
               "lintel",
               "load-spreader",
+              "imperfection",
+              "sneck",
+              "loaded-stone",
               "traced-block",
             ].includes(p.role)) ||
           (p.shape === "rectangle" &&
@@ -860,6 +920,8 @@ $("#import").onchange = async (e) => {
               p.height <= 0 ||
               p.width > 3 ||
               p.height > 3)) ||
+          (p.loadX !== undefined &&
+            (!Number.isFinite(p.loadX) || Math.abs(p.loadX) > 1000000)) ||
           (p.load !== undefined &&
             (!Number.isFinite(p.load) || p.load < 0 || p.load > 1000000)) ||
           Math.abs(p.x) > 100 ||
@@ -1019,6 +1081,13 @@ function particle(spec, p, a, ghost = false) {
     ctx.fillText(spec.role === "load-spreader" ? "SPREADER" : "LINTEL", 0, 0);
   }
   ctx.restore();
+  if (!ghost && spec.role === "imperfection") {
+    ctx.beginPath();
+    ctx.arc(q.x, q.y, Math.max(2.2, spec.r * scale), 0, Math.PI * 2);
+    ctx.strokeStyle = "#b86d36";
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  }
 }
 function line(a, b, color, width = 1) {
   const p = screen(a),
@@ -1162,7 +1231,7 @@ function draw() {
         .join("; ")
     : "";
   for (const i of sim.items)
-    if (i.load && $("#loadForces").checked) {
+    if ((i.load || i.loadX) && $("#loadForces").checked) {
       const p = i.body.translation();
       const a = i.body.rotation();
       let top = i.r;
@@ -1180,11 +1249,17 @@ function draw() {
           (Math.abs(Math.cos(a)) * (i.height ?? i.r * 2)) / 2;
       const origin = { x: p.x, y: p.y + top + 0.7 };
       arrow(origin, 0, -i.load, "#3479c9");
+      arrow(p, i.loadX, 0, "#27845c");
+      if (i.loadX && i.load) arrow(p, i.loadX, -i.load, "#bc4545");
       const label = screen(origin);
       ctx.fillStyle = "#3479c9";
       ctx.font = "600 11px system-ui";
       ctx.textAlign = "left";
-      ctx.fillText(`${i.load.toFixed(0)} N`, label.x + 8, label.y + 8);
+      ctx.fillText(
+        `Fy −${i.load.toFixed(0)} N · Fx ${i.loadX.toFixed(0)} N`,
+        label.x + 8,
+        label.y + 8,
+      );
     }
   for (const id of ["removeSelected", "applyLoad", "clearLoad"])
     $("#" + id).disabled = !selected;
@@ -1225,6 +1300,9 @@ function draw() {
   $("#traceStatus").textContent = draft.length
     ? draft.length + " vertices · Enter / C / right click to close."
     : "Left click: add vertex. Enter / C / right click: close. Esc: cancel. Backspace: undo.";
+  $("#imperfections").checked = sim.items.some(
+    (i) => i.role === "imperfection",
+  );
   $("#particles").textContent = sim.items.length;
   $("#contacts").textContent = sim.contacts.length;
   $("#velocity").innerHTML =
@@ -1247,7 +1325,7 @@ function draw() {
     const r = selected.residual;
     const cs = sim.contacts.filter((c) => c.a === selected || c.b === selected);
     $("#selection").innerHTML =
-      `<strong>Particle ${selected.id} · ${{ disk: "disk", square: "square", triangle: "triangle", rectangle: "rectangle", polygon: "polygonal block" }[selected.shape]}</strong>${selected.role ? `<p class="block-role">${{ brick: "Regular brick", "corner-stone": "Corner stone", "rounded-stone": "Rounded stone", rubble: "Irregular stone", lintel: "Monolithic lintel", "load-spreader": "Load-spreading block", "traced-block": "Photo-traced block" }[selected.role]}</p>` : ""}<dl><dt>Mass</dt><dd>${selected.body.mass().toFixed(3)} kg</dd><dt>Load indicator</dt><dd>${(loadValues.get(selected.id) ?? 0).toFixed(2)} N</dd><dt>Vertical load</dt><dd>${selected.load.toFixed(2)} N</dd><dt>Contacts</dt><dd>${cs.length}</dd><dt>Maximum normal force</dt><dd>${Math.max(0, ...cs.map((c) => c.fn)).toFixed(3)} N</dd><dt>Resultant Rx</dt><dd>${r.x.toFixed(3)} N</dd><dt>Resultant Ry</dt><dd>${r.y.toFixed(3)} N</dd><dt>Residual moment</dt><dd>${selected.torque.toFixed(3)} N·m</dd></dl>${sim.time === 0 ? '<p class="hint">Start the experiment to compute forces.</p>' : ""}`;
+      `<strong>Particle ${selected.id} · ${{ disk: "disk", square: "square", triangle: "triangle", rectangle: "rectangle", polygon: "polygonal block" }[selected.shape]}</strong>${selected.role ? `<p class="block-role">${{ brick: "Regular brick", "corner-stone": "Corner stone", "rounded-stone": "Rounded stone", rubble: "Irregular stone", lintel: "Monolithic lintel", "load-spreader": "Load-spreading block", imperfection: "Joint imperfection", sneck: "Sneck / flake", "loaded-stone": "Loaded stone", "traced-block": "Photo-traced block" }[selected.role]}</p>` : ""}<dl><dt>Mass</dt><dd>${selected.body.mass() < 0.001 ? selected.body.mass().toExponential(3) : selected.body.mass().toFixed(3)} kg</dd><dt>Load indicator</dt><dd>${(loadValues.get(selected.id) ?? 0).toFixed(2)} N</dd><dt>Horizontal load</dt><dd>${selected.loadX.toFixed(2)} N</dd><dt>Vertical load</dt><dd>${selected.load.toFixed(2)} N</dd><dt>Contacts</dt><dd>${cs.length}</dd><dt>Maximum normal force</dt><dd>${Math.max(0, ...cs.map((c) => c.fn)).toFixed(3)} N</dd><dt>Resultant Rx</dt><dd>${r.x.toFixed(3)} N</dd><dt>Resultant Ry</dt><dd>${r.y.toFixed(3)} N</dd><dt>Residual moment</dt><dd>${selected.torque.toFixed(3)} N·m</dd></dl>${sim.time === 0 ? '<p class="hint">Start the experiment to compute forces.</p>' : ""}`;
   } else
     $("#selection").textContent =
       "Click a particle to inspect its mass, forces and moment.";

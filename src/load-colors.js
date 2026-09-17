@@ -2,7 +2,10 @@
 // normal-force magnitudes plus weight and externally applied load.
 export function blockLoads(items, contacts, gravity) {
   const loads = new Map(
-    items.map((i) => [i.id, (i.body.mass() * gravity + (i.load || 0)) / 2]),
+    items.map((i) => [
+      i.id,
+      (i.body.mass() * gravity + Math.hypot(i.loadX || 0, i.load || 0)) / 2,
+    ]),
   );
   for (const c of contacts) {
     loads.set(c.a.id, (loads.get(c.a.id) || 0) + c.fn / 2);

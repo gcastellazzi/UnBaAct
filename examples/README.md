@@ -37,3 +37,5 @@ Terminology references: [Italian Ministry of Culture, Roman masonry techniques](
 - [Distributing block](Load_distributed.json): the same wall and load, with one wider block spanning two top courses.
 
 These examples open with monochrome load shading and a shared 150 N reference. Press Play to compute the contact loads; shade intensities come from the simulation rather than a predefined spreading pattern.
+
+- [Oblique load · irregular masonry](Irregular_wall_oblique_load.json): rounded irregular dry stones with Fx +85 N and Fy −150 N on an upper stone. Use Joints & small fillers to compare with random imperfections and snecks/flakes.

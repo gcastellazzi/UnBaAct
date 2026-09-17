@@ -91,6 +91,13 @@ export const OPUS_SCENARIOS = [
     description:
       "The same 150 N on one wide monolithic block spanning two courses. Compare the wider contact-load paths below it.",
   },
+  {
+    id: "load-oblique-irregular",
+    name: "Oblique load · irregular masonry",
+    source: "Irregular_wall_oblique_load",
+    description:
+      "Rounded irregular dry stones under Fx +85 N and Fy −150 N on an upper stone. The darker load paths are computed from actual contacts. Add joint imperfections or snecks to compare.",
+  },
 ];
 const LEFT = 1.025,
   RIGHT = 10.975,
@@ -265,7 +272,16 @@ export function generateOpus(id, seed = 42) {
     out = [],
     brick = ["#c89068", "#d3a17b", "#dcb18b"],
     stone = ["#afb1aa", "#c4c4ba", "#d5d2c6"];
-  if (id === "load-comparison") {
+  if (id === "load-oblique-irregular") {
+    stoneRegion(out, rand, LEFT, RIGHT, 0.015, TOP, true);
+    const loaded = [...out].sort(
+      (a, b) =>
+        Math.hypot(a.x - 4.8, a.y - 7.25) - Math.hypot(b.x - 4.8, b.y - 7.25),
+    )[0];
+    loaded.load = 150;
+    loaded.loadX = 85;
+    loaded.role = "loaded-stone";
+  } else if (id === "load-comparison") {
     for (const [distributed, offset] of [
       [false, 1.075],
       [true, 6.475],

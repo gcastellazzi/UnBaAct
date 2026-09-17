@@ -1,3 +1,4 @@
+import { worldAnchor } from "./ties.js";
 export const defaultGroups = (friction = 0.45) => [
   { id: "regular", name: "Regular blocks", friction, color: "#dc9d68" },
   { id: "irregular", name: "Irregular blocks", friction, color: "#87b8ac" },
@@ -54,6 +55,20 @@ export function setupInspector() {
   jointTools.innerHTML =
     '<summary>Joints & small fillers</summary><label class="check"><input id="imperfections" type="checkbox"> Imperfections</label><button id="insertSnecks">Insert snecks / flakes</button><p class="hint">While paused: tiny loose circles in random joints; polygonal flakes fill small voids. They remain dynamic and can be removed individually.</p>';
   document.querySelector("#corners").after(jointTools);
+  const tieOption = document.createElement("option");
+  tieOption.value = "tie";
+  tieOption.textContent = "Tie blocks · 2 clicks";
+  document.querySelector("#tool").append(tieOption);
+  const tieTools = document.createElement("div");
+  tieTools.className = "tie-tools";
+  tieTools.innerHTML =
+    '<p id="tieStatus" class="hint">Tie: click a point on each of two blocks. Esc / right click cancels.</p><button id="clearTies" disabled>Clear all ties</button>';
+  jointTools.append(tieTools);
+  const removeTies = document.createElement("button");
+  removeTies.id = "removeBlockTies";
+  removeTies.textContent = "Remove this block’s ties";
+  removeTies.disabled = true;
+  block.querySelector(".load-controls").append(removeTies);
   panel.append(groups, block);
   const activate = (button) => {
     for (const b of tabs.children) {
@@ -234,6 +249,16 @@ export function drawBlockDiagram(canvas, item, sim) {
   arrow(p, 0, -item.load, "#3479c9", "Fy");
   arrow(p, item.loadX || 0, -item.load, "#bc4545", "F applied");
   arrow(p, item.residual.x, item.residual.y, "#e02e67", "ΣF");
+  for (const tie of sim.ties.filter((t) => t.a === item || t.b === item)) {
+    const sign = tie.b === item ? 1 : -1;
+    arrow(
+      worldAnchor(item, tie.a === item ? tie.anchorA : tie.anchorB),
+      sign * tie.force.x,
+      sign * tie.force.y,
+      "#1c769c",
+      `Tie #${tie.id}`,
+    );
+  }
   const reactions = new Map();
   for (const c of sim.contacts.filter((c) => c.a === item || c.b === item)) {
     const sign = c.a === item ? -1 : 1,
@@ -244,8 +269,15 @@ export function drawBlockDiagram(canvas, item, sim) {
     r.y += sign * (c.normal.y * c.fn + c.normal.x * c.ft);
     reactions.set(source, r);
   }
+  for (const tie of sim.ties.filter((t) => t.a === item || t.b === item)) {
+    const sign = tie.b === item ? 1 : -1;
+    reactions.set(
+      `Tie #${tie.id} → block #${tie.a === item ? tie.b.id : tie.a.id}`,
+      { x: sign * tie.force.x, y: sign * tie.force.y },
+    );
+  }
   const heading = document.createElement("strong");
-  heading.textContent = "Contact reactions on this block";
+  heading.textContent = "Contact and tie reactions on this block";
   forceList.append(heading);
   if (!reactions.size) {
     const hint = document.createElement("p");

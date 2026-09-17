@@ -1,3 +1,4 @@
+import { localAnchor, projectTies } from "./ties.js";
 import { decomposePolygon } from "./geometry.js";
 import RAPIER from "@dimforge/rapier2d-compat";
 export async function initialize() {
@@ -39,6 +40,9 @@ export class Simulation {
     this.world.integrationParameters.numSolverIterations = 1;
     this.world.integrationParameters.numInternalPgsIterations = 16;
     this.items = [];
+    this.ties = [];
+    this.tieBoundaryContacts = new Map();
+    this.nextTieId = 1;
     this.walls = [];
     this.contacts = [];
     this.time = 0;
@@ -131,6 +135,202 @@ export class Simulation {
     this.items.push(item);
     return item;
   }
+  addTie(a, b, p = a?.body.translation(), q = b?.body.translation(), spec) {
+    if (!this.items.includes(a) || !this.items.includes(b) || a === b)
+      throw Error("Choose two different blocks.");
+    if (this.ties.length >= 400) throw Error("Maximum 400 ties.");
+    if (
+      this.ties.some(
+        (t) => (t.a === a && t.b === b) || (t.a === b && t.b === a),
+      )
+    )
+      throw Error("These blocks already have a tie.");
+    const anchorA = spec?.anchorA ?? localAnchor(a, p),
+      anchorB = spec?.anchorB ?? localAnchor(b, q);
+    const length = spec?.length ?? Math.hypot(p.x - q.x, p.y - q.y);
+    if (length < 0.001) throw Error("Choose two distinct attachment points.");
+    const tie = {
+      id: spec?.id ?? this.nextTieId++,
+      a,
+      b,
+      anchorA: { ...anchorA },
+      anchorB: { ...anchorB },
+      length,
+      force: { x: 0, y: 0 },
+    };
+    this.nextTieId = Math.max(this.nextTieId, tie.id + 1);
+    this.ties.push(tie);
+    this.quiet = 0;
+    return tie;
+  }
+  tieSpecs() {
+    return this.ties.map((t) => ({
+      id: t.id,
+      a: t.a.id,
+      b: t.b.id,
+      anchorA: { ...t.anchorA },
+      anchorB: { ...t.anchorB },
+      length: t.length,
+    }));
+  }
+  removeTie(tie) {
+    this.ties = this.ties.filter((t) => t !== tie);
+    this.quiet = 0;
+  }
+  tieBoundaryConstraints() {
+    const constraints = [];
+    const linked = new Set(this.ties.flatMap((t) => [t.a, t.b]));
+    const bounds = this.config.bounds ?? {
+      left: 1,
+      right: 11,
+      bottom: 0,
+      top: 8,
+    };
+    for (const item of linked) {
+      const p = item.body.translation(),
+        angle = item.body.rotation();
+      let points;
+      if (item.shape === "disk")
+        points = [
+          { x: p.x, y: p.y - item.r },
+          { x: p.x - item.r, y: p.y },
+          { x: p.x + item.r, y: p.y },
+        ];
+      else {
+        const w = item.width ?? item.r * 2,
+          h = item.height ?? item.r * 2;
+        const v = item.vertices ?? [
+          -w / 2,
+          -h / 2,
+          w / 2,
+          -h / 2,
+          w / 2,
+          h / 2,
+          -w / 2,
+          h / 2,
+        ];
+        points = Array.from({ length: v.length / 2 }, (_, k) => ({
+          x: p.x + v[k * 2] * Math.cos(angle) - v[k * 2 + 1] * Math.sin(angle),
+          y: p.y + v[k * 2] * Math.sin(angle) + v[k * 2 + 1] * Math.cos(angle),
+        }));
+      }
+      const floorPoints = points.filter(
+        (q) => q.x >= bounds.left && q.x <= bounds.right,
+      );
+      if (floorPoints.length) {
+        const q = floorPoints.reduce((a, b) => (a.y < b.y ? a : b));
+        constraints.push({
+          item,
+          point: q,
+          normal: { x: 0, y: 1 },
+          gap: q.y - bounds.bottom,
+          label: "Floor",
+        });
+      }
+      if (this.config.boundary === "cup") {
+        if (this.config.leftWall) {
+          const q = points.reduce((a, b) => (a.x < b.x ? a : b));
+          if (q.y >= bounds.bottom && q.y <= bounds.top)
+            constraints.push({
+              item,
+              point: q,
+              normal: { x: 1, y: 0 },
+              gap: q.x - bounds.left,
+              label: "Left wall",
+            });
+        }
+        if (this.config.rightWall) {
+          const q = points.reduce((a, b) => (a.x > b.x ? a : b));
+          if (q.y >= bounds.bottom && q.y <= bounds.top)
+            constraints.push({
+              item,
+              point: q,
+              normal: { x: -1, y: 0 },
+              gap: bounds.right - q.x,
+              label: "Right wall",
+            });
+        }
+      }
+    }
+    return constraints;
+  }
+  projectTieBoundaries(velocities = false) {
+    for (const c of this.tieBoundaryConstraints()) {
+      const body = c.item.body;
+      if (!velocities) {
+        if (c.gap < 0) {
+          const p = body.translation();
+          body.setTranslation(
+            { x: p.x - c.normal.x * c.gap, y: p.y - c.normal.y * c.gap },
+            true,
+          );
+        }
+        continue;
+      }
+      if (c.gap > 1e-5) continue;
+      const com = body.worldCom(),
+        r = { x: c.point.x - com.x, y: c.point.y - com.y };
+      const velocity = () => {
+        const v = body.linvel(),
+          w = body.angvel();
+        return { x: v.x - w * r.y, y: v.y + w * r.x };
+      };
+      const mass = 1 / body.mass(),
+        inertia = 1 / body.principalInertia();
+      let v = velocity();
+      const vn = v.x * c.normal.x + v.y * c.normal.y;
+      if (vn >= 0) continue;
+      const fn =
+        -vn / (mass + (r.x * c.normal.y - r.y * c.normal.x) ** 2 * inertia);
+      body.applyImpulseAtPoint(
+        { x: c.normal.x * fn, y: c.normal.y * fn },
+        c.point,
+        true,
+      );
+      const tangent = { x: -c.normal.y, y: c.normal.x };
+      v = velocity();
+      const mu = (this.groupFriction(c.item.group) + this.config.friction) / 2;
+      const ft = Math.max(
+        -mu * fn,
+        Math.min(
+          mu * fn,
+          -(v.x * tangent.x + v.y * tangent.y) /
+            (mass + (r.x * tangent.y - r.y * tangent.x) ** 2 * inertia),
+        ),
+      );
+      body.applyImpulseAtPoint(
+        { x: tangent.x * ft, y: tangent.y * ft },
+        c.point,
+        true,
+      );
+      const key = c.item.id + ":" + c.label;
+      const reaction = this.tieBoundaryContacts.get(key) ?? {
+        a: c.item,
+        b: null,
+        wall: c.label,
+        normal: { x: -c.normal.x, y: -c.normal.y },
+        point: c.point,
+        fn: 0,
+        ft: 0,
+      };
+      const weight = fn / DT;
+      const total = reaction.fn + weight;
+      reaction.point = {
+        x: (reaction.point.x * reaction.fn + c.point.x * weight) / total,
+        y: (reaction.point.y * reaction.fn + c.point.y * weight) / total,
+      };
+      reaction.fn = total;
+      reaction.ft += ft / DT;
+      this.tieBoundaryContacts.set(key, reaction);
+    }
+  }
+  enforceTies() {
+    projectTies(this.ties, {
+      velocities: false,
+      iterations: 48,
+      positionCorrection: () => this.projectTieBoundaries(),
+    });
+  }
   specs() {
     return this.items.map((i) => ({
       ...Object.fromEntries(
@@ -191,6 +391,7 @@ export class Simulation {
   }
   remove(item) {
     if (!this.items.includes(item)) return;
+    this.ties = this.ties.filter((t) => t.a !== item && t.b !== item);
     this.world.removeRigidBody(item.body);
     this.items = this.items.filter((i) => i !== item);
     this.contacts = this.contacts.filter((c) => c.a !== item && c.b !== item);
@@ -222,7 +423,24 @@ export class Simulation {
       v: i.body.linvel(),
       w: i.body.angvel(),
     }));
+    for (const tie of this.ties) tie.force = { x: 0, y: 0 };
+    this.tieBoundaryContacts.clear();
+    projectTies(this.ties, {
+      positions: true,
+      velocities: true,
+      dt: DT,
+      positionCorrection: () => this.projectTieBoundaries(),
+      velocityCorrection: () => this.projectTieBoundaries(true),
+    });
     this.world.step();
+    projectTies(this.ties, {
+      positions: true,
+      velocities: true,
+      dt: DT,
+      iterations: 48,
+      positionCorrection: () => this.projectTieBoundaries(),
+      velocityCorrection: () => this.projectTieBoundaries(true),
+    });
     this.time += DT;
     let speed = 0;
     for (let k = 0; k < this.items.length; k++) {
@@ -241,6 +459,7 @@ export class Simulation {
       );
     }
     this.readContacts();
+    this.contacts.push(...this.tieBoundaryContacts.values());
     this.quiet = speed < 0.025 ? this.quiet + DT : 0;
     this.speed = speed;
   }

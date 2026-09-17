@@ -1,3 +1,4 @@
+import { localAnchor, worldAnchor, validateTieSpecs } from "./ties.js";
 import { generateJointFillers } from "./joint-fillers.js";
 import { blockLoads, loadShade } from "./load-colors.js";
 import {
@@ -62,6 +63,8 @@ let sim,
   acc = 0,
   last = 0;
 let modelBounds;
+let tieDraft = null,
+  initialTies = [];
 let loadValues = new Map(),
   loadColorReference = 1;
 let photo = null,
@@ -202,10 +205,20 @@ $("#loadScale").onchange = () => {
   $("#loadReferenceLabel").hidden = $("#loadScale").value !== "fixed";
 };
 renderGroups();
-function rebuild(specs) {
+function rebuild(specs, ties = []) {
   sim?.dispose();
   sim = new Simulation(config());
   specs.forEach((s) => sim.add(s));
+  for (const spec of ties)
+    sim.addTie(
+      sim.items.find((i) => i.id === spec.a),
+      sim.items.find((i) => i.id === spec.b),
+      undefined,
+      undefined,
+      spec,
+    );
+  initialTies = sim.tieSpecs();
+  tieDraft = null;
   initial = sim.specs();
   selected = null;
   running = false;
@@ -227,18 +240,24 @@ function updatePlay() {
   $("#play").textContent = running ? "Ⅱ Pause" : "▶ Play · apply gravity";
 }
 function play() {
-  if (draft.length) {
-    message("Close or cancel the outline before starting playback.");
+  if (draft.length || tieDraft) {
+    message("Finish or cancel the outline / tie before starting playback.");
     return;
   }
   if (!sim.items.length) return;
-  if (sim.time === 0) initial = sim.specs();
+  if (sim.time === 0) {
+    initial = sim.specs();
+    initialTies = sim.tieSpecs();
+  }
   running = !running;
   drag = null;
   acc = 0;
   updatePlay();
 }
 function edited() {
+  sim.enforceTies();
+  initialTies = sim.tieSpecs();
+  for (const tie of sim.ties) tie.force = { x: 0, y: 0 };
   if (selected && !sim.items.includes(selected)) {
     selected = null;
     drag = null;
@@ -269,13 +288,16 @@ $("#generate").onclick = () => {
 };
 $("#clear").onclick = () => rebuild([]);
 $("#play").onclick = play;
-$("#reset").onclick = () => rebuild(initial);
+$("#reset").onclick = () => rebuild(initial, initialTies);
 $("#step").onclick = () => {
-  if (draft.length) {
-    message("Close or cancel the outline first.");
+  if (draft.length || tieDraft) {
+    message("Finish or cancel the outline / tie first.");
     return;
   }
-  if (sim.time === 0) initial = sim.specs();
+  if (sim.time === 0) {
+    initial = sim.specs();
+    initialTies = sim.tieSpecs();
+  }
   running = false;
   updatePlay();
   sim.step();
@@ -343,12 +365,36 @@ $("#corners").onclick = () => {
 };
 function removeSelected() {
   if (!selected) return;
+  if (tieDraft?.item === selected) tieDraft = null;
   sim.remove(selected);
   selected = null;
   drag = null;
-  if (sim.time === 0) initial = sim.specs();
+  if (sim.time === 0) {
+    initial = sim.specs();
+    initialTies = sim.tieSpecs();
+  }
 }
 $("#removeSelected").onclick = removeSelected;
+$("#clearTies").onclick = () => {
+  if (running) {
+    message("Pause playback to remove ties.");
+    return;
+  }
+  for (const tie of [...sim.ties]) sim.removeTie(tie);
+  tieDraft = null;
+  edited();
+};
+$("#removeBlockTies").onclick = () => {
+  if (running) {
+    message("Pause playback to remove ties.");
+    return;
+  }
+  for (const tie of [...sim.ties])
+    if (tie.a === selected || tie.b === selected) sim.removeTie(tie);
+  tieDraft = null;
+  edited();
+};
+
 function insertFillers(kind) {
   if (running || draft.length) {
     message("Pause playback and close the outline first.");
@@ -392,12 +438,15 @@ $("#insertSnecks").onclick = () => insertFillers("sneck");
 $("#kick").oninput = () =>
   ($("#kickValue").textContent = (+$("#kick").value).toFixed(2) + " m/s");
 function kick(direction) {
-  if (draft.length) {
-    message("Close or cancel the outline first.");
+  if (draft.length || tieDraft) {
+    message("Finish or cancel the outline / tie first.");
     return;
   }
   if (!sim.items.length) return;
-  if (sim.time === 0) initial = sim.specs();
+  if (sim.time === 0) {
+    initial = sim.specs();
+    initialTies = sim.tieSpecs();
+  }
   sim.impulse(direction * +$("#kick").value);
   running = true;
   drag = null;
@@ -422,7 +471,10 @@ $("#applyLoad").onclick = () => {
     return;
   }
   sim.setLoad(selected, force, horizontal);
-  if (sim.time === 0) initial = sim.specs();
+  if (sim.time === 0) {
+    initial = sim.specs();
+    initialTies = sim.tieSpecs();
+  }
   message(
     `Load applied: Fx ${horizontal} N, Fy −${force} N. Press Play to observe.`,
   );
@@ -430,7 +482,10 @@ $("#applyLoad").onclick = () => {
 $("#clearLoad").onclick = () => {
   if (selected) {
     sim.setLoad(selected, 0);
-    if (sim.time === 0) initial = sim.specs();
+    if (sim.time === 0) {
+      initial = sim.specs();
+      initialTies = sim.tieSpecs();
+    }
   }
 };
 $("#size").oninput = () =>
@@ -511,10 +566,39 @@ function placePhoto(placement) {
     syncPhotoControls();
     return;
   }
-  const specs = transformTracedSpecs(sim.specs(), old, next, old.id);
+  const before = sim.specs(),
+    specs = transformTracedSpecs(before, old, next, old.id);
+  const ratio = next.width / old.width;
+  const ties = sim.tieSpecs().map((t) => {
+    const result = {
+      ...t,
+      anchorA: { ...t.anchorA },
+      anchorB: { ...t.anchorB },
+    };
+    for (const [key, id] of [
+      ["anchorA", t.a],
+      ["anchorB", t.b],
+    ])
+      if (before.find((p) => p.id === id)?.photoId === old.id) {
+        result[key].x *= ratio;
+        result[key].y *= ratio;
+      }
+    const point = (id, anchor) => {
+      const p = specs.find((p) => p.id === id),
+        a = p.angle;
+      return {
+        x: p.x + anchor.x * Math.cos(a) - anchor.y * Math.sin(a),
+        y: p.y + anchor.x * Math.sin(a) + anchor.y * Math.cos(a),
+      };
+    };
+    const a = point(t.a, result.anchorA),
+      b = point(t.b, result.anchorB);
+    result.length = Math.hypot(a.x - b.x, a.y - b.y);
+    return result;
+  });
   photo.data = next;
   syncPhotoControls();
-  rebuild(specs);
+  rebuild(specs, ties);
   message("Photo and its traced blocks rescaled together.");
 }
 for (const id of ["photoWidth", "photoX", "photoY"])
@@ -584,15 +668,21 @@ $("#cancelTrace").onclick = () => {
   calibration = [];
 };
 $("#tool").onchange = () => {
+  tieDraft = null;
+  if ($("#tool").value === "tie") {
+    $(".joint-tools").open = true;
+    message("Click a point on each of two different blocks to create a tie.");
+  }
   draft = [];
   calibration = [];
   drag = null;
-  if (["trace", "calibrate"].includes($("#tool").value)) {
+  if (["trace", "calibrate", "tie"].includes($("#tool").value)) {
     running = false;
     updatePlay();
   }
 };
 $("#calibratePhoto").onclick = () => {
+  tieDraft = null;
   if (!photo) {
     message("Load a photo first.");
     return;
@@ -627,6 +717,11 @@ function calibrationPoint(p) {
   $("#tool").value = "trace";
 }
 canvas.oncontextmenu = (e) => {
+  if ($("#tool").value === "tie") {
+    e.preventDefault();
+    tieDraft = null;
+    return;
+  }
   if ($("#tool").value === "trace") {
     e.preventDefault();
     finishTrace();
@@ -689,6 +784,37 @@ canvas.onpointerdown = (e) => {
     item = hit(p);
   canvas.focus();
   if (e.button !== 0) return;
+  if ($("#tool").value === "tie") {
+    if (running) {
+      message("Pause playback to create a tie.");
+      return;
+    }
+    if (!item) {
+      message("Click inside a block to choose an attachment point.");
+      return;
+    }
+    selected = item;
+    if (!tieDraft) {
+      tieDraft = { item, anchor: localAnchor(item, p) };
+      message("First tie point selected. Click a different block.");
+      return;
+    }
+    try {
+      sim.addTie(
+        tieDraft.item,
+        item,
+        worldAnchor(tieDraft.item, tieDraft.anchor),
+        p,
+      );
+      tieDraft = null;
+      edited();
+      message("Tie created. Click two more blocks to add another.");
+    } catch (error) {
+      message(error.message);
+    }
+    return;
+  }
+
   if (!running && $("#tool").value === "trace") {
     if (
       draft.length >= 3 &&
@@ -803,7 +929,10 @@ window.onkeydown = (e) => {
       return;
     }
   }
-  if (e.key === "Escape") calibration = [];
+  if (e.key === "Escape") {
+    calibration = [];
+    tieDraft = null;
+  }
   if (e.code === "Space") {
     e.preventDefault();
     play();
@@ -832,6 +961,8 @@ $("#export").onclick = () => {
           config: config(),
           particles: sim.specs(),
           initial,
+          ties: sim.tieSpecs(),
+          initialTies,
           photo: photo?.data,
           view: {
             blockColorMode: $("#blockColorMode").value,
@@ -965,6 +1096,7 @@ $("#import").onchange = async (e) => {
       )
     )
       throw Error("Unknown block group");
+    validateTieSpecs(data.ties ?? [], data.particles);
     const importedPhoto = data.photo ? await restorePhoto(data.photo) : null;
     if (token !== photoLoadToken) return;
     groups = importedGroups;
@@ -997,7 +1129,7 @@ $("#import").onchange = async (e) => {
           ? data.view.loadReference
           : 150;
     }
-    rebuild(data.particles);
+    rebuild(data.particles, data.ties ?? []);
     $("#mu").dispatchEvent(new Event("input"));
     message("Experiment imported.");
   } catch (error) {
@@ -1118,7 +1250,7 @@ function arrow(p, x, y, color) {
 function draw() {
   loadValues =
     sim.time > 0
-      ? blockLoads(sim.items, sim.contacts, sim.config.gravity)
+      ? blockLoads(sim.items, sim.contacts, sim.config.gravity, sim.ties)
       : new Map();
   loadColorReference =
     $("#loadScale").value === "fixed"
@@ -1160,6 +1292,43 @@ function draw() {
     initial.forEach((s) => particle(s, s, s.angle, true));
   for (const i of sim.items)
     particle(i, i.body.translation(), i.body.rotation());
+  if (tieDraft && !sim.items.includes(tieDraft.item)) tieDraft = null;
+  for (const tie of sim.ties) {
+    const a = worldAnchor(tie.a, tie.anchorA),
+      b = worldAnchor(tie.b, tie.anchorB);
+    line(a, b, "#1c769c", 2.5);
+    for (const p of [a, b]) {
+      const q = screen(p);
+      ctx.beginPath();
+      ctx.arc(q.x, q.y, 3, 0, Math.PI * 2);
+      ctx.fillStyle = "#f0fafc";
+      ctx.fill();
+      ctx.strokeStyle = "#1c769c";
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+    }
+  }
+  if (tieDraft) {
+    const p = worldAnchor(tieDraft.item, tieDraft.anchor);
+    if (pointer) {
+      ctx.setLineDash([5, 4]);
+      line(p, pointer, "#1c769c", 1.5);
+      ctx.setLineDash([]);
+    }
+    const q = screen(p);
+    ctx.beginPath();
+    ctx.arc(q.x, q.y, 5, 0, Math.PI * 2);
+    ctx.strokeStyle = "#1c769c";
+    ctx.stroke();
+  }
+  $("#tieStatus").textContent = tieDraft
+    ? `Block #${tieDraft.item.id} chosen · click a second block. Esc cancels.`
+    : `${sim.ties.length} ties · click a point on each of two blocks.`;
+  $("#clearTies").disabled = !sim.ties.length || running;
+  $("#removeBlockTies").disabled =
+    !selected ||
+    running ||
+    !sim.ties.some((t) => t.a === selected || t.b === selected);
   const max = Math.max(0.001, ...sim.contacts.map((c) => c.fn)),
     visible = sim.contacts.filter(
       (c) => c.fn >= max * (+$("#threshold").value / 100),
@@ -1325,7 +1494,7 @@ function draw() {
     const r = selected.residual;
     const cs = sim.contacts.filter((c) => c.a === selected || c.b === selected);
     $("#selection").innerHTML =
-      `<strong>Particle ${selected.id} · ${{ disk: "disk", square: "square", triangle: "triangle", rectangle: "rectangle", polygon: "polygonal block" }[selected.shape]}</strong>${selected.role ? `<p class="block-role">${{ brick: "Regular brick", "corner-stone": "Corner stone", "rounded-stone": "Rounded stone", rubble: "Irregular stone", lintel: "Monolithic lintel", "load-spreader": "Load-spreading block", imperfection: "Joint imperfection", sneck: "Sneck / flake", "loaded-stone": "Loaded stone", "traced-block": "Photo-traced block" }[selected.role]}</p>` : ""}<dl><dt>Mass</dt><dd>${selected.body.mass() < 0.001 ? selected.body.mass().toExponential(3) : selected.body.mass().toFixed(3)} kg</dd><dt>Load indicator</dt><dd>${(loadValues.get(selected.id) ?? 0).toFixed(2)} N</dd><dt>Horizontal load</dt><dd>${selected.loadX.toFixed(2)} N</dd><dt>Vertical load</dt><dd>${selected.load.toFixed(2)} N</dd><dt>Contacts</dt><dd>${cs.length}</dd><dt>Maximum normal force</dt><dd>${Math.max(0, ...cs.map((c) => c.fn)).toFixed(3)} N</dd><dt>Resultant Rx</dt><dd>${r.x.toFixed(3)} N</dd><dt>Resultant Ry</dt><dd>${r.y.toFixed(3)} N</dd><dt>Residual moment</dt><dd>${selected.torque.toFixed(3)} N·m</dd></dl>${sim.time === 0 ? '<p class="hint">Start the experiment to compute forces.</p>' : ""}`;
+      `<strong>Particle ${selected.id} · ${{ disk: "disk", square: "square", triangle: "triangle", rectangle: "rectangle", polygon: "polygonal block" }[selected.shape]}</strong>${selected.role ? `<p class="block-role">${{ brick: "Regular brick", "corner-stone": "Corner stone", "rounded-stone": "Rounded stone", rubble: "Irregular stone", lintel: "Monolithic lintel", "load-spreader": "Load-spreading block", imperfection: "Joint imperfection", sneck: "Sneck / flake", "loaded-stone": "Loaded stone", "traced-block": "Photo-traced block" }[selected.role]}</p>` : ""}<dl><dt>Mass</dt><dd>${selected.body.mass() < 0.001 ? selected.body.mass().toExponential(3) : selected.body.mass().toFixed(3)} kg</dd><dt>Load indicator</dt><dd>${(loadValues.get(selected.id) ?? 0).toFixed(2)} N</dd><dt>Horizontal load</dt><dd>${selected.loadX.toFixed(2)} N</dd><dt>Vertical load</dt><dd>${selected.load.toFixed(2)} N</dd><dt>Contacts</dt><dd>${cs.length}</dd><dt>Ties</dt><dd>${sim.ties.filter((t) => t.a === selected || t.b === selected).length}</dd><dt>Maximum normal force</dt><dd>${Math.max(0, ...cs.map((c) => c.fn)).toFixed(3)} N</dd><dt>Resultant Rx</dt><dd>${r.x.toFixed(3)} N</dd><dt>Resultant Ry</dt><dd>${r.y.toFixed(3)} N</dd><dt>Residual moment</dt><dd>${selected.torque.toFixed(3)} N·m</dd></dl>${sim.time === 0 ? '<p class="hint">Start the experiment to compute forces.</p>' : ""}`;
   } else
     $("#selection").textContent =
       "Click a particle to inspect its mass, forces and moment.";

@@ -1,19 +1,60 @@
+/* House style shared with aLOTofImaginArches and StressRealm. Tokens,
+   buttons, inputs, panels, header, dialogs and menus all come from the kit;
+   this file is the LAYOUT of UnBaAct and nothing else. Keep the three copies
+   of ui-kit.css identical. */
+@import "./ui-kit.css";
+
 :root {
-  font-family:
-    Inter,
-    ui-sans-serif,
-    system-ui,
-    -apple-system,
-    sans-serif;
-  color: #263e3a;
-  background: #f6f7f3;
-  font-synthesis: none;
+  /* This app packs three columns and a dock into one screen, so its controls
+     sit one notch tighter than the kit default. */
+  --control-font: 11px;
+  --label-font: 11px;
+  --control-pad-y: 7px;
+  --control-pad-x: 8px;
+
   font-size: 13px;
   --side-width: clamp(180px, 16vw, 250px);
   --dock-height: 174px;
 }
-* {
-  box-sizing: border-box;
+
+/* ---- the kit's parts, given this app's density and placement ---------- */
+label {
+  display: block;
+  margin: 9px 0;
+}
+select,
+input[type="number"] {
+  display: block;
+  margin-top: 5px;
+}
+.panel h2 {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 10px;
+  padding-bottom: 9px;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+  line-height: 1.4;
+}
+/* The step number, set exactly as StressRealm sets its panel numbers. */
+.panel h2 > span:first-child {
+  font-size: 10px;
+  color: var(--muted-foreground);
+}
+.metrics {
+  gap: 12px;
+  padding: 9px 12px;
+}
+.legend {
+  flex-direction: column;
+  gap: 9px;
+  margin-top: 15px;
+}
+.import {
+  width: 100%;
+  margin: 6px 0;
 }
 html,
 body {
@@ -23,44 +64,19 @@ body {
   overflow: hidden;
 }
 #app {
+  height: 100vh;
   height: 100dvh;
   display: grid;
-  grid-template-rows: 48px minmax(0, 1fr);
+  grid-template-rows: 54px minmax(0, 1fr);
   overflow: hidden;
 }
 header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
   padding: 0 18px;
-  border-bottom: 1px solid #dde3dd;
-  background: #fbfcf9;
-  gap: 12px;
-}
-.brand {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: inherit;
-  text-decoration: none;
-  font-size: 20px;
-  font-weight: 750;
-}
-.logo {
-  color: #168478;
-  font-size: 25px;
 }
 .header-actions {
   display: flex;
   align-items: center;
   gap: 14px;
-}
-.tag {
-  font-size: 9px;
-  letter-spacing: 1px;
-  border: 1px solid #cad8d0;
-  padding: 6px 10px;
-  border-radius: 20px;
 }
 .workspace {
   min-width: 0;
@@ -70,15 +86,6 @@ header {
   grid-template-rows: minmax(0, 1fr) var(--dock-height);
   gap: 10px;
   padding: 10px;
-  overflow: hidden;
-}
-.panel,
-.scene-panel {
-  min-height: 0;
-  min-width: 0;
-  background: white;
-  border: 1px solid #dfe5dc;
-  border-radius: 10px;
   overflow: hidden;
 }
 .build-panel {
@@ -108,57 +115,10 @@ header {
   scrollbar-color: #bbcec3 transparent;
   padding: 0 3px 2px 0;
 }
-.panel h2 {
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-  margin: 0 0 12px;
-  line-height: 1.4;
-}
-h2 span {
-  font-size: 10px;
-  background: #e9f2ed;
-  color: #328a79;
-  border-radius: 50%;
-  padding: 5px;
-}
-.divider {
-  height: 1px;
-  background: #e7eae3;
-  margin: 12px 0;
-}
-label {
-  display: block;
-  font-size: 11px;
-  color: #5c7067;
-  margin: 9px 0;
-}
-select,
-input[type="number"] {
-  display: block;
-  width: 100%;
-  min-width: 0;
-  padding: 7px 6px;
-  margin-top: 5px;
-  border: 1px solid #d9e2d9;
-  border-radius: 5px;
-  background: #fbfcf9;
-  color: #314b40;
-  font: inherit;
-  font-size: 11px;
-}
-input[type="range"] {
-  display: block;
-  width: 100%;
-  accent-color: #238b7c;
-  margin: 8px 0 0;
-}
 output {
   float: right;
   font-size: 10px;
-  color: #218476;
+  color: var(--primary);
 }
 .pair {
   display: flex;
@@ -171,85 +131,18 @@ output {
   flex: 1;
   min-width: 0;
 }
-.check {
-  display: flex;
-  gap: 6px;
-  align-items: center;
-  font-size: 11px;
-  margin: 12px 0;
-  color: #465d50;
-}
-.check input {
-  flex-shrink: 0;
-  accent-color: #208476;
-  width: 14px;
-  height: 14px;
-  margin: 0;
-}
-button,
-.import {
-  border: 1px solid #d7e1d9;
-  border-radius: 5px;
-  padding: 7px 8px;
-  background: white;
-  color: #385548;
-  font: inherit;
-  font-size: 11px;
-  cursor: pointer;
-  transition: background 0.15s;
-}
-button:hover,
-.import:hover {
-  background: #edf4ee;
-}
-button:disabled {
-  opacity: 0.45;
-  cursor: default;
-}
-button:disabled:hover {
-  background: white;
-}
 .panel button {
   width: 100%;
   margin: 3px 0;
-}
-.primary {
-  background: #208476;
-  color: white;
-  border-color: #208476;
-}
-.primary:hover {
-  background: #176c60;
-}
-.subtle {
-  color: #7c8074;
-}
-button:focus-visible,
-select:focus-visible,
-canvas:focus-visible,
-input:focus-visible,
-summary:focus-visible,
-a:focus-visible,
-.selection:focus-visible {
-  outline: 2px solid #208779;
-  outline-offset: 2px;
 }
 .scene-heading {
   display: flex;
   justify-content: space-between;
   align-items: center;
   padding: 10px 12px;
-  color: #61786b;
+  color: var(--muted-foreground);
   font-size: 11px;
   gap: 6px;
-}
-.live-dot {
-  display: inline-block;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: #258879;
-  margin-right: 6px;
 }
 .canvas-wrap {
   min-width: 0;
@@ -271,14 +164,14 @@ canvas {
   pointer-events: none;
   font-size: 8px;
   letter-spacing: 1px;
-  color: #83978b;
+  color: var(--muted-foreground);
 }
 #toast {
   position: absolute;
   bottom: 14px;
   left: 50%;
   transform: translateX(-50%);
-  background: #274e44;
+  background: var(--primary-strong);
   color: white;
   padding: 8px 12px;
   border-radius: 7px;
@@ -295,40 +188,17 @@ canvas {
   flex-wrap: wrap;
   gap: 6px;
   padding: 9px 10px;
-  border-bottom: 1px solid #e3e8df;
+  border-bottom: 1px solid var(--border);
 }
 #status {
   font-size: 10px;
-  color: #238476;
+  color: var(--primary);
   margin-left: auto;
-}
-.metrics {
-  display: flex;
-  gap: 12px;
-  padding: 9px 12px;
-}
-.metrics > div {
-  flex: 1;
-  min-width: 0;
-}
-.metrics small {
-  font-size: 8px;
-  letter-spacing: 0.7px;
-  color: #819083;
-}
-.metrics strong {
-  display: block;
-  font-size: 18px;
-  margin-top: 3px;
-  font-weight: 550;
-}
-.metrics strong small {
-  font-size: 10px;
 }
 .scenario-description {
   font-size: 10px;
   line-height: 1.4;
-  color: #7e8b7d;
+  color: var(--muted-foreground);
   margin: 7px 0 10px;
 }
 .force-scale {
@@ -341,16 +211,8 @@ canvas {
   display: flex;
   justify-content: space-between;
   font-size: 9px;
-  color: #8a968b;
+  color: var(--muted-foreground);
   margin-top: 5px;
-}
-.legend {
-  display: flex;
-  flex-direction: column;
-  gap: 9px;
-  font-size: 10px;
-  color: #788878;
-  margin-top: 15px;
 }
 .legend i {
   display: inline-block;
@@ -358,11 +220,6 @@ canvas {
   height: 3px;
   vertical-align: middle;
   margin-right: 6px;
-}
-.import {
-  display: block;
-  text-align: center;
-  margin: 6px 0;
 }
 .import input {
   display: none;
@@ -428,7 +285,7 @@ canvas {
 .selection {
   font-size: 10px;
   line-height: 1.4;
-  color: #7b8c7e;
+  color: var(--muted-foreground);
   min-height: 0;
   overflow: auto;
   scrollbar-width: thin;
@@ -436,7 +293,7 @@ canvas {
   padding-right: 3px;
 }
 .selection strong {
-  color: #307363;
+  color: var(--primary);
   font-size: 11px;
 }
 .selection dl {
@@ -448,7 +305,7 @@ canvas {
 }
 .selection dd {
   margin: 0;
-  color: #314e42;
+  color: var(--foreground-soft);
   font-variant-numeric: tabular-nums;
 }
 .selection p {
@@ -461,94 +318,6 @@ canvas {
 .load-controls button {
   font-size: 10px;
   padding: 6px;
-}
-.hint {
-  color: #859188;
-  font-size: 10px;
-  line-height: 1.6;
-}
-.app-menu {
-  position: relative;
-  margin: 0;
-  font-size: 12px;
-}
-.app-menu > summary {
-  list-style: none;
-  display: flex;
-  gap: 18px;
-  align-items: center;
-  padding: 7px 10px;
-  border: 1px solid #d7e1d9;
-  border-radius: 5px;
-  background: white;
-  color: #385548;
-  cursor: pointer;
-}
-.app-menu > summary::-webkit-details-marker {
-  display: none;
-}
-.app-menu nav {
-  position: absolute;
-  right: 0;
-  top: calc(100% + 7px);
-  z-index: 5;
-  width: 190px;
-  padding: 6px;
-  background: white;
-  border: 1px solid #d7e1d9;
-  border-radius: 8px;
-  box-shadow: 0 8px 25px #263e3a18;
-}
-.app-menu nav button {
-  display: block;
-  width: 100%;
-  text-align: left;
-  border: 0;
-}
-dialog {
-  color: #263e3a;
-  background: white;
-  border: 1px solid #d7e1d9;
-  border-radius: 14px;
-  padding: 24px;
-  max-width: 580px;
-  width: calc(100% - 32px);
-  max-height: 85dvh;
-  overflow: auto;
-}
-dialog::backdrop {
-  background: #18342c70;
-}
-.dialog-heading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 20px;
-  margin-bottom: 20px;
-}
-.dialog-heading h2 {
-  margin: 0;
-  font-size: 20px;
-}
-dialog h1 {
-  font-size: 30px;
-  margin: 14px 0;
-  font-weight: 650;
-  letter-spacing: -1px;
-}
-dialog p {
-  font-size: 13px;
-  color: #62756a;
-  line-height: 1.6;
-}
-dialog a {
-  color: #168478;
-}
-.eyebrow {
-  font-size: 10px;
-  color: #25877a;
-  letter-spacing: 2px;
-  font-weight: 700;
 }
 .close-dialog {
   padding: 7px 10px;
@@ -626,13 +395,10 @@ dialog a {
     --dock-height: 235px;
   }
   #app {
-    grid-template-rows: 42px minmax(0, 1fr);
+    grid-template-rows: 50px minmax(0, 1fr);
   }
   header {
     padding: 0 10px;
-  }
-  .brand {
-    font-size: 17px;
   }
   .workspace {
     gap: 4px;
@@ -870,7 +636,7 @@ dialog a {
 }
 .photo-tools > summary {
   cursor: pointer;
-  color: #307363;
+  color: var(--primary);
   padding: 5px 0;
   font-weight: 600;
 }
@@ -884,27 +650,20 @@ dialog a {
 .photo-tools input[type="file"] {
   display: none;
 }
-.brand-expansion {
-  font-size: 15px;
-  font-weight: 400;
-  color: #5c7067;
-  white-space: nowrap;
-  margin-left: 8px;
-}
-.brand-expansion strong {
-  font-weight: 750;
-  color: #263e3a;
-}
 @media (max-width: 600px) {
   .brand {
-    gap: 5px;
+    gap: 6px;
   }
-  .brand-expansion {
-    font-size: 11px;
-    margin-left: 2px;
+  .brandmark {
+    padding: 5px;
+    font-size: 16px;
   }
-  .logo {
-    font-size: 20px;
+  .brand h1 {
+    font-size: 16px;
+  }
+  .brand p {
+    font-size: 8px;
+    letter-spacing: 1.4px;
   }
   .app-menu > summary {
     gap: 8px;
@@ -912,11 +671,11 @@ dialog a {
   }
 }
 @media (max-width: 380px) {
-  .brand {
-    font-size: 15px;
+  .brand h1 {
+    font-size: 14px;
   }
-  .brand-expansion {
-    font-size: 10px;
+  .brand p {
+    display: none;
   }
   .header-actions {
     gap: 5px;
@@ -944,14 +703,6 @@ dialog a {
   padding: 7px 2px;
   font-size: 11px;
 }
-.inspector-tabs [aria-selected="true"] {
-  background: #e0eee7;
-  color: #176b58;
-  border-color: #90b8a7;
-}
-[hidden] {
-  display: none !important;
-}
 #tab-block .selected-fields {
   display: flex;
   flex-direction: column;
@@ -971,7 +722,7 @@ dialog a {
 }
 #experimentPanel {
   border: 0;
-  border-top: 1px solid #e3e8df;
+  border-top: 1px solid var(--border);
   border-radius: 0;
   padding: 9px 10px;
   max-height: 180px;
@@ -1004,14 +755,14 @@ dialog a {
 }
 .group-row {
   padding: 8px 0;
-  border-bottom: 1px solid #e4ebe5;
+  border-bottom: 1px solid var(--border);
 }
 .group-row label {
   margin: 0;
 }
 .group-row small {
   font-size: 10px;
-  color: #71877a;
+  color: var(--muted-foreground);
 }
 .group-dot {
   display: inline-block;
@@ -1097,7 +848,7 @@ dialog a {
 }
 .block-force-list {
   font-size: 10px;
-  color: #426359;
+  color: var(--foreground-soft);
   line-height: 1.5;
   margin-top: 10px;
 }
@@ -1108,7 +859,7 @@ dialog a {
   height: 8px;
   border-radius: 5px;
   background: linear-gradient(to right, #f8f8f8, #212121);
-  border: 1px solid #d4d9d5;
+  border: 1px solid var(--border);
 }
 .load-color-controls {
   margin-bottom: 10px;
@@ -1122,7 +873,7 @@ dialog a {
   font-size: 10px;
 }
 .joint-tools summary {
-  color: #307363;
+  color: var(--primary);
   font-weight: 600;
   cursor: pointer;
   padding: 5px 0;

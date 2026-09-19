@@ -99,8 +99,20 @@ node scripts/photo-browser-check.mjs
 - `src/scenarios.js`: ten masonry patterns, clipping and polygonal stone generation.
 - `src/ui.js`: English interface, credits and model dialogs.
 - `src/main.js`: rendering, interaction and JSON exchange.
+- `src/ui-kit.css`: the interface kit shared with aLOTofImaginArches and StressRealm.
 - `src/style.css`: responsive canvas and control layout.
 - `tests/`: physics and scenario verification.
+
+## Shared interface
+
+The interface chrome — colours, type, buttons, inputs, panels, the header and
+the footer — is one house style shared with the two sibling teaching
+applications, [aLOTofImaginArches](https://github.com/gcastellazzi/aLoTiA) and
+[StressRealm](https://github.com/gcastellazzi/StressRealm). It lives in
+`src/ui-kit.css`, which is vendored: the three copies are byte-for-byte identical and
+carry a version in their header. Change it in one repository and copy the file
+to the other two. Each application keeps its own layout, and its own drawing
+colours, below the kit.
 
 ## GitHub and static hosting
 

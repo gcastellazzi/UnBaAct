@@ -71,6 +71,27 @@ export const OPUS_SCENARIOS = [
       "Irregular stonework with regular edge blocks and squared window jambs supporting one monolithic lintel.",
   },
   {
+    id: "slender-coursed",
+    name: "Slender wall · coursed stones",
+    source: "Slender_wall_coursed_stones",
+    description:
+      "A narrow, tall wall of long coursed stones with staggered joints and small pinning stones.",
+  },
+  {
+    id: "slender-cornerstones",
+    name: "Slender wall · corner stones",
+    source: "Slender_wall_corner_stones",
+    description:
+      "A narrow irregular wall held between large corner stones. Small packing stones fill the interfaces beside every corner stone.",
+  },
+  {
+    id: "slender-rubble",
+    name: "Slender wall · rubble and snecks",
+    source: "Slender_wall_rubble_snecks",
+    description:
+      "A narrow, tall rubble wall with small snecks breaking up the larger irregular joints.",
+  },
+  {
     id: "load-comparison",
     name: "Load spread · side-by-side",
     source: "Load_spread_comparison",
@@ -341,6 +362,9 @@ export function generateOpus(id, seed = 42) {
   else if (id === "defensive-wall-bologna") defensiveWall(rand, out);
   else if (id === "window-regular-bricks") windowWall(rand, out, false);
   else if (id === "window-irregular-corners") windowWall(rand, out, true);
+  else if (id === "slender-coursed") slenderCoursedWall(rand, out);
+  else if (id === "slender-cornerstones") slenderCornerstoneWall(rand, out);
+  else if (id === "slender-rubble") slenderRubbleWall(rand, out);
   else throw Error("Unknown OPUS scenario");
   return out;
 }
@@ -505,6 +529,175 @@ function windowWall(rand, out, irregular) {
     "#bda477",
   );
   out.push({ ...lintel, role: "lintel" });
+}
+
+const SLENDER = { left: 4.45, right: 7.55, bottom: 0.015, top: TOP };
+
+function addCell(out, left, right, bottom, top, color, role = "rubble") {
+  const b = block(
+    rect((left + right) / 2, (bottom + top) / 2, right - left, top - bottom),
+    color,
+    SLENDER.bottom,
+    SLENDER.top,
+  );
+  if (b) out.push({ ...b, role });
+}
+
+function addPolygonCell(out, vertices, color, role = "rubble") {
+  const b = block(vertices, color, SLENDER.bottom, SLENDER.top);
+  if (b) out.push({ ...b, role });
+}
+
+function addPackingBand(out, rand, left, right, bottom, top, palette) {
+  const split = bottom + (top - bottom) * (0.38 + rand() * 0.24);
+  addCell(
+    out,
+    left,
+    right,
+    bottom,
+    split,
+    palette[Math.floor(rand() * palette.length)],
+    "sneck",
+  );
+  addCell(
+    out,
+    left,
+    right,
+    split,
+    top,
+    palette[Math.floor(rand() * palette.length)],
+    "sneck",
+  );
+}
+
+function slenderCoursedWall(rand, out) {
+  const palette = ["#c5c5bb", "#d3d0c5", "#aaada5", "#ddd8ca"];
+  const courseHeight = (SLENDER.top - SLENDER.bottom) / 8;
+  let y = SLENDER.bottom;
+  for (let row = 0; row < 8; row++) {
+    const h = row === 7 ? SLENDER.top - y : courseHeight;
+    const pinLeft = row % 3 === 1 ? 5.64 : row % 3 === 2 ? 6.22 : 5.98;
+    const pinWidth = row % 2 ? 0.3 : 0.24;
+    addCell(
+      out,
+      SLENDER.left,
+      pinLeft,
+      y,
+      y + h,
+      palette[Math.floor(rand() * palette.length)],
+    );
+    addCell(out, pinLeft, pinLeft + pinWidth, y, y + h, "#777a71", "sneck");
+    addCell(
+      out,
+      pinLeft + pinWidth,
+      SLENDER.right,
+      y,
+      y + h,
+      palette[Math.floor(rand() * palette.length)],
+    );
+    y += h;
+  }
+}
+
+function slenderCornerstoneWall(rand, out) {
+  const cornerPalette = ["#c7c8be", "#d8d5c9", "#afb3aa"];
+  const corePalette = ["#9da39a", "#b9b9aa", "#d0c9ad", "#8f9792"];
+  const packingPalette = ["#d1b45e", "#b69f59", "#dbca82"];
+  let y = SLENDER.bottom;
+  for (let row = 0; y < SLENDER.top - 0.01; row++) {
+    const h = Math.min(0.72 + rand() * 0.27, SLENDER.top - y);
+    const leftCorner = SLENDER.left + (row % 2 ? 0.78 : 0.9);
+    const rightCorner = SLENDER.right - (row % 2 ? 0.9 : 0.78);
+    const packing = 0.18;
+    const coreLeft = leftCorner + packing,
+      coreRight = rightCorner - packing,
+      middleBottom = coreLeft + (coreRight - coreLeft) * (0.4 + rand() * 0.18),
+      middleTop = coreLeft + (coreRight - coreLeft) * (0.4 + rand() * 0.18);
+
+    addCell(
+      out,
+      SLENDER.left,
+      leftCorner,
+      y,
+      y + h,
+      cornerPalette[Math.floor(rand() * cornerPalette.length)],
+      "corner-stone",
+    );
+    // Dedicated packing stones occupy the complete interfaces beside the
+    // corner stones. They prevent the large visual/contact voids produced by
+    // putting rounded rubble directly against a straight quoin face.
+    addPackingBand(
+      out,
+      rand,
+      leftCorner,
+      leftCorner + packing,
+      y,
+      y + h,
+      packingPalette,
+    );
+    addPolygonCell(
+      out,
+      [
+        { x: coreLeft, y },
+        { x: middleBottom, y },
+        { x: middleTop, y: y + h },
+        { x: coreLeft, y: y + h },
+      ],
+      corePalette[Math.floor(rand() * corePalette.length)],
+    );
+    addPolygonCell(
+      out,
+      [
+        { x: middleBottom, y },
+        { x: coreRight, y },
+        { x: coreRight, y: y + h },
+        { x: middleTop, y: y + h },
+      ],
+      corePalette[Math.floor(rand() * corePalette.length)],
+    );
+    addPackingBand(
+      out,
+      rand,
+      rightCorner - packing,
+      rightCorner,
+      y,
+      y + h,
+      packingPalette,
+    );
+    addCell(
+      out,
+      rightCorner,
+      SLENDER.right,
+      y,
+      y + h,
+      cornerPalette[Math.floor(rand() * cornerPalette.length)],
+      "corner-stone",
+    );
+    y += h;
+  }
+}
+
+function slenderRubbleWall(rand, out) {
+  const first = out.length;
+  stoneRegion(
+    out,
+    rand,
+    SLENDER.left,
+    SLENDER.right,
+    SLENDER.bottom,
+    SLENDER.top,
+    true,
+  );
+  // Mark four of the smallest existing cells as snecks. Reusing cells from
+  // the tessellation keeps the geometry overlap-free and avoids fake voids.
+  out
+    .slice(first)
+    .sort((a, b) => a.r - b.r)
+    .slice(0, 4)
+    .forEach((stone) => {
+      stone.color = "#d1b45e";
+      stone.role = "sneck";
+    });
 }
 
 function loadWall(out, distributed) {

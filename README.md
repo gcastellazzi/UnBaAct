@@ -35,7 +35,7 @@ The application occupies the viewport without document scrolling. **01 Build** s
 
 - Generate disks, squares, triangles, rectangles or mixed shapes with a reproducible random seed.
 - Choose a container, an open-sided floor or a floor with side supports. Toggle left and right boundaries independently, including during playback.
-- Load the corner stone configuration: two columns of seven rectangular blocks, alternating 1.60/0.95 m widths and 0.65 m height, with granular material inside. Every block is dynamic and can be dragged or rotated while paused. This creates a new scene.
+- Load the filled corner-stone wall: a narrow, tall wall with large edge stones, an irregular core and small packing stones occupying the interfaces beside every corner stone. Every block is dynamic and can be dragged or rotated while paused. This creates a new scene.
 - While paused, click to add particles or select and drag them. R rotates, arrow keys move the selection and Space toggles Play.
 - Remove a selected block with its button, Delete/Backspace or the Remove particle tool, including during playback.
 - Use Play, slow motion or Single step (1/120 s).
@@ -45,6 +45,7 @@ The application occupies the viewport without document scrolling. **01 Build** s
 - Display force chains, normal/tangential contact forces and unbalanced resultants. Arrows use a logarithmic scale; the selection panel provides numerical values.
 - Filter contacts by intensity and highlight the component connected to the selected particle, including floor and walls. This shows connectivity, not a unique decomposition of load paths.
 - Export/import the current configuration as JSON. Reset returns to the initial geometry while retaining current physics parameters. Import starts a new experiment from the exported configuration.
+- Import blocks from an ALoTiA project JSON or from the Abaqus INP exported by ALoTiA. JSON projects must have a physical scale and are converted automatically to metres and newtons; INP imports use the length unit selected beside the file control because Abaqus decks do not encode it. Imported ALoTiA loads and colours are retained when available.
 
 ## Photo tracing
 
@@ -61,7 +62,7 @@ Photos are decoded and processed locally in the browser, reduced to a maximum 20
 
 ## Masonry examples
 
-Choose a pattern under **Masonry examples**, click **Load masonry example**, then Play. The library includes ten masonry patterns, **Defensive wall Bologna** with regular brick edges and rounded central stones, and two window walls: regular bricks or irregular blocks with corner stones. Each window has a single dynamic monolithic lintel, labelled LINTEL on the canvas. Every stone is an independent convex rigid body. JSON examples and reference filenames are in [`examples/`](examples/README.md).
+Choose a pattern under **Masonry examples**, click **Load masonry example**, then Play. The library includes seven historical masonry patterns, **Defensive wall Bologna**, two window walls and three narrow, tall walls inspired by the supplied reference: coursed stones, irregular masonry with fully packed corner-stone interfaces, and rubble with snecks. Each window has a single dynamic monolithic lintel, labelled LINTEL on the canvas. Every stone is an independent convex rigid body. JSON examples and reference filenames are in [`examples/`](examples/README.md).
 
 The examples are procedural approximations of the supplied images. They have no mortar, cohesion or three-dimensional masonry core.
 
@@ -94,6 +95,7 @@ node scripts/photo-browser-check.mjs
 ## Files
 
 - `src/geometry.js`: outline validation, centroids and concave polygon decomposition.
+- `src/alotia-import.js`: validated ALoTiA JSON and Abaqus INP block conversion.
 - `src/photo.js`: local image processing, embedded-photo validation and calibration transforms.
 - `src/physics.js`: rigid bodies, contacts, generation and diagnostics.
 - `src/scenarios.js`: ten masonry patterns, clipping and polygonal stone generation.

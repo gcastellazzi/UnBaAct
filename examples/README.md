@@ -18,6 +18,13 @@ Seven configurations inspired by the supplied reference images, in the same orde
 - [Window · regular bricks](Window_regular_bricks.json): staggered brickwork around a central opening, with one monolithic lintel.
 - [Window · irregular blocks + corner stones](Window_irregular_blocks_corner_stones.json): irregular stonework, regular corner stones and squared jambs supporting one monolithic lintel.
 
+Three additional procedural examples reproduce the narrow, tall wall types in
+the supplied reference: **Slender wall · coursed stones**, **Slender wall ·
+corner stones**, and **Slender wall · rubble and snecks**. In the corner-stone
+case, two rows of small packing stones completely occupy the interfaces between
+the large edge stones and the irregular core; no large empty pockets are left
+beside the corner stones.
+
 The window spans x = 4.6–7.4 m and y = 1.65–4.3 m. The lintel is a single 4.2 × 0.55 m block with 0.7 m nominal bearing at each end, not a set of bricks or a fixed constraint. It can be selected, moved, removed, shaken or vertically loaded. Small geometric joint clearances apply. Rounded stones are convex polygons with smoothly bevelled corners; no mortar is included.
 
 Labels and filenames follow the references supplied by the project author. The geometries are procedural reconstructions, not exact tracings of individual blocks.

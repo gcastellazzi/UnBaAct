@@ -7,6 +7,7 @@ import {
   drawBlockDiagram,
 } from "./inspector.js";
 import { contourSpec, decomposePolygon } from "./geometry.js";
+import { importALoTiA } from "./alotia-import.js";
 import {
   loadLocalPhoto,
   restorePhoto,
@@ -22,7 +23,6 @@ import {
   generate,
   DT,
   connectedContacts,
-  cornerStones,
 } from "./physics.js";
 const $ = (s) => document.querySelector(s);
 $("#app").innerHTML = interfaceHTML;
@@ -345,23 +345,43 @@ $("#loadOpus").onclick = () => {
   message("Example loaded. Press Play to test stability.");
 };
 $("#corners").onclick = () => {
-  const grains = generate(
-    +$("#seed").value,
-    Math.min(60, +$("#count").value || 55),
-    $("#shape").value === "rectangle" ? "disk" : $("#shape").value,
-  ).map((p, k) => ({
-    ...p,
-    r: 0.24,
-    x: 3.25 + (k % 9) * 0.68,
-    y: 0.4 + Math.floor(k / 9) * 0.68,
-  }));
   photo = null;
   modelBounds = undefined;
   ++photoLoadToken;
   $("#blockOpacity").value = 100;
   syncPhotoControls();
-  rebuild([...cornerStones(), ...grains]);
+  rebuild(generateOpus("slender-cornerstones", +$("#seed").value));
   $("#tool").value = "select";
+  message("Filled corner-stone wall loaded. Press Play to test stability.");
+};
+$("#alotiaImport").onchange = async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  try {
+    if (file.size > 25 * 1024 * 1024) throw Error("Maximum file size is 25 MB.");
+    const imported = importALoTiA(await file.text(), {
+      fileName: file.name,
+      inpLengthUnit: $("#alotiaInpUnit").value,
+    });
+    photo = null;
+    ++photoLoadToken;
+    $("#blockOpacity").value = 100;
+    syncPhotoControls();
+    $("#boundary").value = "free";
+    $("#leftWall").checked = false;
+    $("#rightWall").checked = false;
+    if (imported.thickness !== undefined)
+      $("#thickness").value = imported.thickness;
+    if (imported.materialDensity !== undefined)
+      $("#density").value = imported.materialDensity;
+    modelBounds = imported.bounds;
+    rebuild(imported.particles);
+    $("#tool").value = "select";
+    message(`${imported.source}: ${imported.particles.length} blocks imported.`);
+  } catch (error) {
+    message("ALoTiA import failed: " + error.message);
+  }
+  e.target.value = "";
 };
 function removeSelected() {
   if (!selected) return;

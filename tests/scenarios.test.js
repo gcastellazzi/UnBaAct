@@ -96,3 +96,49 @@ for (const id of ["window-regular-bricks", "window-irregular-corners"])
       sim.dispose();
     }
   });
+
+test("slender walls are tall and narrow, with every corner stone packed", () => {
+  for (const id of [
+    "slender-coursed",
+    "slender-cornerstones",
+    "slender-rubble",
+  ]) {
+    const blocks = generateOpus(id, 42),
+      points = blocks.flatMap(vertices),
+      xs = points.map((p) => p.x),
+      ys = points.map((p) => p.y);
+    assert.ok(Math.max(...xs) - Math.min(...xs) < 3.2);
+    assert.ok(Math.max(...ys) - Math.min(...ys) > 7.6);
+  }
+
+  const blocks = generateOpus("slender-cornerstones", 42),
+    corners = blocks.filter((b) => b.role === "corner-stone"),
+    packing = blocks.filter((b) => b.role === "sneck");
+  assert.ok(corners.length >= 16);
+  assert.ok(packing.length >= corners.length * 2);
+  for (const corner of corners) {
+    const cp = vertices(corner),
+      cLeft = Math.min(...cp.map((p) => p.x)),
+      cRight = Math.max(...cp.map((p) => p.x)),
+      cBottom = Math.min(...cp.map((p) => p.y)),
+      cTop = Math.max(...cp.map((p) => p.y)),
+      isLeft = corner.x < 6;
+    assert.ok(
+      packing.some((stone) => {
+        const sp = vertices(stone),
+          sLeft = Math.min(...sp.map((p) => p.x)),
+          sRight = Math.max(...sp.map((p) => p.x)),
+          sBottom = Math.min(...sp.map((p) => p.y)),
+          sTop = Math.max(...sp.map((p) => p.y));
+        const horizontalGap = isLeft
+          ? Math.abs(sLeft - cRight)
+          : Math.abs(cLeft - sRight);
+        return (
+          horizontalGap < 0.02 &&
+          Math.min(cTop, sTop) - Math.max(cBottom, sBottom) > 0.1
+        );
+      }),
+      "each corner stone must have a packing stone against its inner face",
+    );
+  }
+});

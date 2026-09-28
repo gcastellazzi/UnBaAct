@@ -5,6 +5,11 @@ export const defaultGroups = (friction = 0.45) => [
 ];
 export function setupInspector() {
   const $ = (s) => document.querySelector(s);
+  const alotiaGround = document.createElement("label");
+  alotiaGround.className = "check";
+  alotiaGround.innerHTML =
+    '<input id="alotiaGroundConnectors" type="checkbox" checked> Connect base blocks to ground';
+  $("#alotiaImport").closest("label").before(alotiaGround);
   const panel = $("#observePanel");
   panel.querySelector("h2").innerHTML = "<span>03</span> Inspector";
   const observe = panel.querySelector(".sidebar-content");

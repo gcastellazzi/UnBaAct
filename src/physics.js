@@ -37,6 +37,9 @@ export class Simulation {
     this.world = new RAPIER.World({ x: 0, y: -this.config.gravity });
     this.world.timestep = DT;
     this.world.integrationParameters.switchToStandardPgsSolver();
+    // Standard PGS selects an aggressive ERP (0.8). Start gently because
+    // traced masonry may contain a whole network of nominally coincident edges.
+    this.world.integrationParameters.erp = 0.2;
     this.world.integrationParameters.numSolverIterations = 1;
     this.world.integrationParameters.numInternalPgsIterations = 16;
     this.items = [];
@@ -433,6 +436,9 @@ export class Simulation {
       velocityCorrection: () => this.projectTieBoundaries(true),
     });
     this.world.step();
+    // Only the import/initialization step needs the gentler correction. Restore
+    // Standard PGS behaviour for subsequent impacts and resting contacts.
+    if (this.time === 0) this.world.integrationParameters.erp = 0.8;
     projectTies(this.ties, {
       positions: true,
       velocities: true,

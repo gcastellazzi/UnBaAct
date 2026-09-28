@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { importALoTiA } from "../src/alotia-import.js";
+import { addGroundConnectors, importALoTiA } from "../src/alotia-import.js";
 
 test("imports physical ALoTiA JSON, converts units, material data and loads", () => {
   const data = {
@@ -76,5 +76,37 @@ test("rejects generic Abaqus decks", () => {
   assert.throws(
     () => importALoTiA("*Heading\n*Part, name=X", { fileName: "x.inp" }),
     /not produced by ALoTiA/,
+  );
+});
+
+test("adds fitted ground connectors below both springings", () => {
+  const particles = [
+    {
+      shape: "polygon",
+      x: -2,
+      y: 1.1,
+      angle: 0,
+      r: 1.5,
+      vertices: [-1, -1, 1, -0.9, 1, 1, -1, 1],
+    },
+    {
+      shape: "polygon",
+      x: 2,
+      y: 1.3,
+      angle: 0,
+      r: 1.5,
+      vertices: [-1, -1, 1, -0.9, 1, 1, -1, 1],
+    },
+  ];
+  const connectors = addGroundConnectors(particles);
+  assert.equal(connectors.length, 2);
+  assert.equal(particles.length, 4);
+  assert.ok(connectors.every((p) => p.role === "ground-connector"));
+  assert.ok(
+    connectors.every((p) =>
+      p.vertices
+        .filter((_, i) => i % 2)
+        .every((y) => y + p.y >= 0.1 - 1e-12),
+    ),
   );
 });

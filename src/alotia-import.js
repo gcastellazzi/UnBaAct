@@ -82,6 +82,92 @@ function boundsFor(particles) {
   return { left: left - pad, right: right + pad, bottom, top: top + pad };
 }
 
+function worldVertices(particle) {
+  const c = Math.cos(particle.angle),
+    s = Math.sin(particle.angle);
+  return Array.from({ length: particle.vertices.length / 2 }, (_, i) => {
+    const x = particle.vertices[i * 2],
+      y = particle.vertices[i * 2 + 1];
+    return {
+      x: particle.x + x * c - y * s,
+      y: particle.y + x * s + y * c,
+    };
+  });
+}
+
+const turn = (a, b, c) =>
+  (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
+
+function lowerHull(points) {
+  const sorted = [...points].sort((a, b) => a.x - b.x || a.y - b.y),
+    hull = [];
+  for (const point of sorted) {
+    while (hull.length > 1 && turn(hull.at(-2), hull.at(-1), point) <= 0)
+      hull.pop();
+    hull.push(point);
+  }
+  return hull;
+}
+
+export function addGroundConnectors(particles) {
+  if (!particles.length || particles.length > 398) return [];
+  const polygons = particles.map(worldVertices),
+    all = polygons.flat(),
+    floor = Math.min(...all.map((p) => p.y)),
+    left = Math.min(...all.map((p) => p.x)),
+    right = Math.max(...all.map((p) => p.x)),
+    middle = (left + right) / 2,
+    sizes = polygons
+      .map((points) =>
+        Math.sqrt(
+          Math.abs(
+            points.reduce(
+              (area, p, i) =>
+                area +
+                p.x * points[(i + 1) % points.length].y -
+                p.y * points[(i + 1) % points.length].x,
+              0,
+            ),
+          ) / 2,
+        ),
+      )
+      .sort((a, b) => a - b),
+    typical = sizes[Math.floor(sizes.length / 2)],
+    band = Math.max(typical * 0.3, (right - left) * 0.005),
+    connectors = [];
+
+  for (const side of [-1, 1]) {
+    const candidates = polygons.filter((points) => {
+        const minY = Math.min(...points.map((p) => p.y)),
+          centreX = points.reduce((sum, p) => sum + p.x, 0) / points.length;
+        return minY <= floor + band && (centreX - middle) * side > 0;
+      }),
+      lowPoints = candidates.flat().filter((p) => p.y <= floor + band + 1e-9);
+    if (lowPoints.length < 2) continue;
+    const top = lowerHull(lowPoints),
+      x0 = top[0].x,
+      x1 = top.at(-1).x;
+    if (
+      x1 - x0 < typical * 0.1 ||
+      Math.max(...top.map((p) => p.y)) - floor < 1e-4
+    )
+      continue;
+    const connector = particle(
+      [
+        { x: x0, y: floor },
+        { x: x1, y: floor },
+        ...top.reverse().filter((p) => p.y > floor + 1e-7),
+      ],
+      "#9b8b73",
+    );
+    connector.role = "ground-connector";
+    connector.group = "regular";
+    connectors.push(connector);
+  }
+  particles.push(...connectors);
+  return connectors;
+}
+
 function pointInPolygon(point, polygon) {
   let inside = false;
   for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
@@ -105,7 +191,7 @@ function pointInPolygon(point, polygon) {
   return inside;
 }
 
-function importJson(text) {
+function importJson(text, { groundConnectors = false } = {}) {
   let data;
   try {
     data = JSON.parse(text);
@@ -147,7 +233,6 @@ function importJson(text) {
       groupColors.get(model.blockGroups?.[index]) ?? COLORS[index % COLORS.length],
     ),
   );
-
   const forces = data.forces ?? {};
   for (let i = 0; i < (forces.points?.length ?? 0); i++) {
     const rawPoint = forces.points[i];
@@ -200,6 +285,8 @@ function importJson(text) {
       if (!(materialDensity >= 0.001 && materialDensity <= 30000)) materialDensity = undefined;
     }
   }
+
+  if (groundConnectors) addGroundConnectors(particles);
 
   return {
     particles,
@@ -344,10 +431,19 @@ function importInp(text, inpLengthUnit) {
   return { particles, bounds: boundsFor(particles), source: "ALoTiA INP" };
 }
 
-export function importALoTiA(text, { fileName = "", inpLengthUnit = "m" } = {}) {
+export function importALoTiA(
+  text,
+  { fileName = "", inpLengthUnit = "m", groundConnectors = false } = {},
+) {
   const source = String(text ?? "");
   if (!source.trim()) throw Error("The selected file is empty.");
-  if (/\.inp$/i.test(fileName) || /^\s*\*Heading/im.test(source))
-    return importInp(source, inpLengthUnit);
-  return importJson(source);
+  if (/\.inp$/i.test(fileName) || /^\s*\*Heading/im.test(source)) {
+    const imported = importInp(source, inpLengthUnit);
+    if (groundConnectors) {
+      addGroundConnectors(imported.particles);
+      imported.bounds = boundsFor(imported.particles);
+    }
+    return imported;
+  }
+  return importJson(source, { groundConnectors });
 }

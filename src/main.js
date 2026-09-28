@@ -362,6 +362,7 @@ $("#alotiaImport").onchange = async (e) => {
     const imported = importALoTiA(await file.text(), {
       fileName: file.name,
       inpLengthUnit: $("#alotiaInpUnit").value,
+      groundConnectors: $("#alotiaGroundConnectors").checked,
     });
     photo = null;
     ++photoLoadToken;
@@ -1064,6 +1065,7 @@ $("#import").onchange = async (e) => {
               "sneck",
               "loaded-stone",
               "traced-block",
+              "ground-connector",
             ].includes(p.role)) ||
           (p.shape === "rectangle" &&
             (![p.width, p.height].every(Number.isFinite) ||
@@ -1514,7 +1516,7 @@ function draw() {
     const r = selected.residual;
     const cs = sim.contacts.filter((c) => c.a === selected || c.b === selected);
     $("#selection").innerHTML =
-      `<strong>Particle ${selected.id} · ${{ disk: "disk", square: "square", triangle: "triangle", rectangle: "rectangle", polygon: "polygonal block" }[selected.shape]}</strong>${selected.role ? `<p class="block-role">${{ brick: "Regular brick", "corner-stone": "Corner stone", "rounded-stone": "Rounded stone", rubble: "Irregular stone", lintel: "Monolithic lintel", "load-spreader": "Load-spreading block", imperfection: "Joint imperfection", sneck: "Sneck / flake", "loaded-stone": "Loaded stone", "traced-block": "Photo-traced block" }[selected.role]}</p>` : ""}<dl><dt>Mass</dt><dd>${selected.body.mass() < 0.001 ? selected.body.mass().toExponential(3) : selected.body.mass().toFixed(3)} kg</dd><dt>Load indicator</dt><dd>${(loadValues.get(selected.id) ?? 0).toFixed(2)} N</dd><dt>Horizontal load</dt><dd>${selected.loadX.toFixed(2)} N</dd><dt>Vertical load</dt><dd>${selected.load.toFixed(2)} N</dd><dt>Contacts</dt><dd>${cs.length}</dd><dt>Ties</dt><dd>${sim.ties.filter((t) => t.a === selected || t.b === selected).length}</dd><dt>Maximum normal force</dt><dd>${Math.max(0, ...cs.map((c) => c.fn)).toFixed(3)} N</dd><dt>Resultant Rx</dt><dd>${r.x.toFixed(3)} N</dd><dt>Resultant Ry</dt><dd>${r.y.toFixed(3)} N</dd><dt>Residual moment</dt><dd>${selected.torque.toFixed(3)} N·m</dd></dl>${sim.time === 0 ? '<p class="hint">Start the experiment to compute forces.</p>' : ""}`;
+      `<strong>Particle ${selected.id} · ${{ disk: "disk", square: "square", triangle: "triangle", rectangle: "rectangle", polygon: "polygonal block" }[selected.shape]}</strong>${selected.role ? `<p class="block-role">${{ brick: "Regular brick", "corner-stone": "Corner stone", "rounded-stone": "Rounded stone", rubble: "Irregular stone", lintel: "Monolithic lintel", "load-spreader": "Load-spreading block", imperfection: "Joint imperfection", sneck: "Sneck / flake", "loaded-stone": "Loaded stone", "traced-block": "Photo-traced block", "ground-connector": "Ground connector" }[selected.role]}</p>` : ""}<dl><dt>Mass</dt><dd>${selected.body.mass() < 0.001 ? selected.body.mass().toExponential(3) : selected.body.mass().toFixed(3)} kg</dd><dt>Load indicator</dt><dd>${(loadValues.get(selected.id) ?? 0).toFixed(2)} N</dd><dt>Horizontal load</dt><dd>${selected.loadX.toFixed(2)} N</dd><dt>Vertical load</dt><dd>${selected.load.toFixed(2)} N</dd><dt>Contacts</dt><dd>${cs.length}</dd><dt>Ties</dt><dd>${sim.ties.filter((t) => t.a === selected || t.b === selected).length}</dd><dt>Maximum normal force</dt><dd>${Math.max(0, ...cs.map((c) => c.fn)).toFixed(3)} N</dd><dt>Resultant Rx</dt><dd>${r.x.toFixed(3)} N</dd><dt>Resultant Ry</dt><dd>${r.y.toFixed(3)} N</dd><dt>Residual moment</dt><dd>${selected.torque.toFixed(3)} N·m</dd></dl>${sim.time === 0 ? '<p class="hint">Start the experiment to compute forces.</p>' : ""}`;
   } else
     $("#selection").textContent =
       "Click a particle to inspect its mass, forces and moment.";

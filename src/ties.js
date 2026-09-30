@@ -84,6 +84,8 @@ export function projectTies(
         const t = data(tie),
           lambda = -(t.d - tie.length) / t.w;
         if (Math.abs(t.d - tie.length) < 1e-7) continue;
+        // A tension-only tie (chain / tie-rod) never pushes the blocks apart.
+        if (tie.tension && t.d < tie.length) continue;
         shift(
           tie.a,
           { x: -t.n.x * lambda, y: -t.n.y * lambda },
@@ -97,7 +99,10 @@ export function projectTies(
       }
       positionCorrection();
     }
-  if (velocities)
+  if (velocities) {
+    // Accumulated impulse per tie: tension-only ties are clamped to pulling
+    // (λ ≤ 0) and act only when taut, like a chain between the anchors.
+    const accumulated = new Map();
     for (let k = 0; k < iterations; k++) {
       for (const tie of ties) {
         const t = data(tie),
@@ -108,7 +113,15 @@ export function projectTies(
         const relative =
           (vb.x - wb * t.rb.y - va.x + wa * t.ra.y) * t.n.x +
           (vb.y + wb * t.rb.x - va.y - wa * t.ra.x) * t.n.y;
-        const lambda = -relative / t.w;
+        let lambda = -relative / t.w;
+        if (tie.tension) {
+          if (t.d < tie.length - 1e-4) continue;
+          const before = accumulated.get(tie) ?? 0,
+            after = Math.min(0, before + lambda);
+          lambda = after - before;
+          accumulated.set(tie, after);
+          if (!lambda) continue;
+        }
         const impulse = { x: t.n.x * lambda, y: t.n.y * lambda };
         tie.a.body.applyImpulseAtPoint(
           { x: -impulse.x, y: -impulse.y },
@@ -121,6 +134,7 @@ export function projectTies(
       }
       velocityCorrection();
     }
+  }
 }
 export function validateTieSpecs(ties, particles) {
   if (!Array.isArray(ties) || ties.length > 400)
@@ -162,6 +176,7 @@ export function validateTieSpecs(ties, particles) {
       !Number.isFinite(t.length) ||
       t.length < 0.001 ||
       t.length > 300 ||
+      (t.tension !== undefined && typeof t.tension !== "boolean") ||
       ![t.anchorA, t.anchorB].every(
         (p) =>
           p &&

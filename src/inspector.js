@@ -68,7 +68,7 @@ export function setupInspector() {
   const tieTools = document.createElement("div");
   tieTools.className = "tie-tools";
   tieTools.innerHTML =
-    '<p id="tieStatus" class="hint">Tie: click a point on each of two blocks. Esc / right click cancels.</p><button id="clearTies" disabled>Clear all ties</button>';
+    '<p id="tieStatus" class="hint">Tie: click a point on each of two blocks. Esc / right click cancels.</p><label class="check"><input id="tieTension" type="checkbox"> Tension only (chain / tie-rod, dashed)</label><button id="clearTies" disabled>Clear all ties</button>';
   jointTools.append(tieTools);
   const removeTies = document.createElement("button");
   removeTies.id = "removeBlockTies";

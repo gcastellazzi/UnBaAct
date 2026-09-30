@@ -17,6 +17,7 @@ import {
 import { interfaceHTML } from "./ui.js";
 import { setupAnalysis } from "./analysis-ui.js";
 import { detectStones } from "./stone-detect.js";
+import { analysisExample, EXAMPLE_SETTINGS } from "./analysis-examples.js";
 import { OPUS_SCENARIOS, generateOpus } from "./scenarios.js";
 import "./style.css";
 import {
@@ -221,6 +222,29 @@ const analysis = setupAnalysis({
   },
   message,
 });
+$("#loadAnalysisExample").onclick = () => {
+  const example = analysisExample($("#analysisExample").value);
+  photo = null;
+  modelBounds = undefined;
+  ++photoLoadToken;
+  $("#blockOpacity").value = 100;
+  syncPhotoControls();
+  $("#boundary").value = "free";
+  $("#leftWall").checked = true;
+  $("#rightWall").checked = true;
+  $("#thickness").value = EXAMPLE_SETTINGS.thickness;
+  $("#density").value = EXAMPLE_SETTINGS.materialDensity;
+  $("#mu").value = EXAMPLE_SETTINGS.friction;
+  for (const group of groups) group.friction = EXAMPLE_SETTINGS.friction;
+  renderGroups();
+  rebuild(example.particles, example.ties);
+  $("#mu").dispatchEvent(new Event("input"));
+  $("#tool").value = "select";
+  analysis.preset(example);
+  message(
+    `${example.name} loaded (open sides, μ = ${EXAMPLE_SETTINGS.friction}). Run the analysis${example.ties.length ? " or Pre / post ties" : ""}.`,
+  );
+};
 function rebuild(specs, ties = []) {
   sim?.dispose();
   sim = new Simulation(config());
@@ -930,6 +954,7 @@ canvas.onpointerdown = (e) => {
         item,
         worldAnchor(tieDraft.item, tieDraft.anchor),
         p,
+        { tension: $("#tieTension").checked },
       );
       tieDraft = null;
       edited();
@@ -1449,7 +1474,9 @@ function draw() {
   for (const tie of sim.ties) {
     const a = worldAnchor(tie.a, tie.anchorA),
       b = worldAnchor(tie.b, tie.anchorB);
+    if (tie.tension) ctx.setLineDash([7, 4]);
     line(a, b, "#1c769c", 2.5);
+    ctx.setLineDash([]);
     for (const p of [a, b]) {
       const q = screen(p);
       ctx.beginPath();

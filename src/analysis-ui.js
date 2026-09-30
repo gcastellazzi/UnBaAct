@@ -5,12 +5,17 @@ import {
   collapseGain,
   equilibriumReport,
 } from "./collapse.js";
+import { ANALYSIS_EXAMPLES } from "./analysis-examples.js";
 
 const $ = (s) => document.querySelector(s);
 const fmt = (v, d = 3) => (Number.isFinite(v) ? v.toFixed(d) : "—");
 const pct = (v) => (Number.isFinite(v) ? (v * 100).toFixed(2) + "%" : "—");
 
-export const analysisHTML = `<section class="analysis-block"><h3>Equilibrium check · current state</h3><div id="equilibriumReport" class="equilibrium-report"><p class="hint">Press Play (or run an analysis) to compute contact forces.</p></div></section><div class="divider"></div><section class="analysis-block"><h3>Collapse multiplier λ</h3><label>Load pattern<select id="actionPattern">${Object.entries(
+export const analysisHTML = `<section class="analysis-block"><h3>Test examples</h3><label>Structure<select id="analysisExample">${ANALYSIS_EXAMPLES.map(
+  (e) => `<option value="${e.id}">${e.name}</option>`,
+).join(
+  "",
+)}</select></label><button id="loadAnalysisExample">▦ Load example + analysis settings</button><p id="analysisExampleDescription" class="hint">${ANALYSIS_EXAMPLES[0].description}</p></section><div class="divider"></div><section class="analysis-block"><h3>Equilibrium check · current state</h3><div id="equilibriumReport" class="equilibrium-report"><p class="hint">Press Play (or run an analysis) to compute contact forces.</p></div></section><div class="divider"></div><section class="analysis-block"><h3>Collapse multiplier λ</h3><label>Load pattern<select id="actionPattern">${Object.entries(
   PATTERNS,
 )
   .map(([id, name]) => `<option value="${id}">${name}</option>`)
@@ -42,6 +47,10 @@ export function setupAnalysis({ scene, sim, pause, message }) {
     hint();
   };
   hint();
+  $("#analysisExample").onchange = () =>
+    ($("#analysisExampleDescription").textContent = ANALYSIS_EXAMPLES.find(
+      (e) => e.id === $("#analysisExample").value,
+    ).description);
   const options = () => {
     const lambdaMax = +$("#lambdaMax").value,
       steps = Math.round(+$("#lambdaSteps").value),
@@ -280,5 +289,14 @@ export function setupAnalysis({ scene, sim, pause, message }) {
 </dl><p class="hint">Green: within 2% global and 3% local thresholds (numerical equilibrium).</p>`;
   }
 
-  return { state, updateReport, render };
+  // Preset the controls for a loaded example.
+  function preset({ pattern, lambdaMax }) {
+    $("#actionPattern").value = pattern;
+    $("#actionPattern").dispatchEvent(new Event("change"));
+    $("#actionDirection").value = "1";
+    $("#lambdaMax").value = lambdaMax;
+    $("#lambdaSteps").value = 20;
+    $("#collapseLimit").value = 25;
+  }
+  return { state, updateReport, render, preset };
 }

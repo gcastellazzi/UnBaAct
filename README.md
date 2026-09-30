@@ -106,6 +106,21 @@ For rigid, no-tension frictional blocks under gravity alone, equilibrium is scal
 
 **Pre / post ties** runs the same analysis twice — without the scene's ties (pre) and with them (post) — and reports the gain λc,post / λc,pre ("stabilised" when only the tied scene stands under self-weight). A tie joins exactly two blocks: ties attached to single stones can extract them, so a tie layout may also lower λc. **Apply λ · pattern to the scene** adds the pattern forces with a chosen λ to the interactive simulation, to watch the response with Play.
 
+### Test examples
+
+**Analysis → Test examples** loads a ready structure (open sides, thickness 0.5 m, density 2000 kg/m³, μ = 0.6 for every group) and presets the analysis controls (`src/analysis-examples.js`). Values below were obtained with the default settings (20 load steps, δ limit 25%); they change slightly with the step size.
+
+| Example | Pattern | Expected result |
+| --- | --- | --- |
+| Arch on piers · free joints | horizontal uniform | four-hinge arch mechanism, λc ≈ 0.22 |
+| Arch on piers · tied joints | horizontal uniform | a tension tie across every voussoir joint: hinges only at springings and piers. **Pre / post ties** ≈ 0.22 → 0.31 (×1.4) |
+| Arcade · three arches on piers | applied loads (1 kN on the left keystone × λ) | the arch spreads and overturns the slender end pier, λc ≈ 2.4 |
+| Arcade · with chains (catene) | applied loads | a chain between the springers of each arch; **Pre / post ties** ≈ 2.4 → 3.0 (×1.2) |
+| Portico · trabeated, drum columns | horizontal uniform | parallelogram rocking of the columns, λc ≈ 0.17, close to b/h = 0.19 |
+| Calibration · slender block | horizontal uniform | overturning at λ = b/h = 1/3 (numerically ≈ 0.33–0.35) |
+
+In the arcade, chains are ineffective against a horizontal sway, where both springings translate together; they act against the spreading produced by vertical loads. The trabeated portico has no tied variant for the same reason: point ties at column joints do not stop the rocking at the column bases.
+
 These are numerical estimates from rigid-block dynamics with quasi-static load steps; they depend on friction, contact tolerances and the displacement limit, and are not a certified structural assessment.
 
 ## Physics and limitations
@@ -142,6 +157,7 @@ node scripts/photo-browser-check.mjs
 - `src/physics.js`: rigid bodies, contacts, generation and diagnostics.
 - `src/collapse.js`: equilibrium report, incremental collapse multiplier and pre/post tie comparison.
 - `src/analysis-ui.js`: Analysis tab, results table and λ–δ curve.
+- `src/analysis-examples.js`: arch, arcade, portico and calibration test structures.
 - `src/stone-detect.js`: local stone segmentation and contour extraction from photos.
 - `src/scenarios.js`: ten masonry patterns, clipping and polygonal stone generation.
 - `src/ui.js`: English interface, credits and model dialogs.
@@ -199,5 +215,7 @@ Insertion checks the current block geometry, respects the 400-body import/export
 Choose **Build → Editing tool → Tie blocks · 2 clicks**, then click inside two different blocks. The clicked points become body-local attachments and their current separation becomes the fixed tie length. A blue line and pin markers show the tie. Continue with another click pair to create more ties; Esc or right click cancels an unfinished pair. Creation pauses playback. There is at most one tie per block pair.
 
 A tie is a bilateral, massless distance constraint: it resists both extension and shortening, permits pin rotation, and introduces no rod collider, added mass, or imposed relative block orientation. The simulation projects anchor positions and relative axial velocities before/after each rigid-body timestep using mass and rotational inertia; lengths are enforced to numerical tolerance. Complex tightly constrained assemblies can retain small solver/contact errors. Tie forces are estimates from the velocity-correction impulses divided by the timestep and appear independently in the **Block** diagram and reaction list. Load shading includes tie-force magnitudes.
+
+Check **Tension only (chain / tie-rod)** before clicking to create a tension-only tie, drawn dashed: it is slack while the anchors approach, and pulls with a non-negative impulse once it reaches its length, like an iron chain. Bilateral ties that carry compression parallel to a contact joint can oscillate against the contact solver, so use tension-only ties across joints that are meant to be compressed by the blocks themselves. Exports store `tension: true`; older files load as bilateral ties.
 
 Use **Joints & small fillers → Clear all ties** or **Block → Remove this block’s ties** while paused. Deleting a block removes its attached ties. Paused dragging/rotation also moves the linked bodies as needed to preserve the attachments’ separation. Export/import and Reset preserve ties, anchors and rest lengths; older JSON files without ties remain supported. Photo calibration transforms the photo-linked anchors and recalibrates the tie length along with the blocks.

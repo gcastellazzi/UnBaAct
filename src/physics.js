@@ -176,6 +176,7 @@ export class Simulation {
       anchorA: { ...anchorA },
       anchorB: { ...anchorB },
       length,
+      tension: spec?.tension === true,
       force: { x: 0, y: 0 },
     };
     this.nextTieId = Math.max(this.nextTieId, tie.id + 1);
@@ -191,6 +192,7 @@ export class Simulation {
       anchorA: { ...t.anchorA },
       anchorB: { ...t.anchorB },
       length: t.length,
+      ...(t.tension ? { tension: true } : {}),
     }));
   }
   removeTie(tie) {
@@ -234,42 +236,43 @@ export class Simulation {
           y: p.y + v[k * 2] * Math.sin(angle) + v[k * 2 + 1] * Math.cos(angle),
         }));
       }
-      const floorPoints = points.filter(
-        (q) => q.x >= bounds.left && q.x <= bounds.right,
+      // One constraint per vertex touching a boundary: a flat face resting on
+      // the floor is supported at both ends, instead of only at its lowest
+      // corner, which created a spurious moment and rocking jitter. Only the
+      // deepest vertex (primary) drives the position correction.
+      const touching = (candidates, gap, normal, label) => {
+        if (!candidates.length) return;
+        const deepest = Math.min(...candidates.map(gap));
+        for (const q of candidates)
+          if (gap(q) - deepest <= 2e-3)
+            constraints.push({
+              item,
+              point: q,
+              normal,
+              gap: gap(q),
+              label,
+              primary: gap(q) === deepest,
+            });
+      };
+      touching(
+        points.filter((q) => q.x >= bounds.left && q.x <= bounds.right),
+        (q) => q.y - bounds.bottom,
+        { x: 0, y: 1 },
+        "Floor",
       );
-      if (floorPoints.length) {
-        const q = floorPoints.reduce((a, b) => (a.y < b.y ? a : b));
-        constraints.push({
-          item,
-          point: q,
-          normal: { x: 0, y: 1 },
-          gap: q.y - bounds.bottom,
-          label: "Floor",
-        });
-      }
       if (this.config.boundary === "cup") {
-        if (this.config.leftWall) {
-          const q = points.reduce((a, b) => (a.x < b.x ? a : b));
-          if (q.y >= bounds.bottom && q.y <= bounds.top)
-            constraints.push({
-              item,
-              point: q,
-              normal: { x: 1, y: 0 },
-              gap: q.x - bounds.left,
-              label: "Left wall",
-            });
-        }
-        if (this.config.rightWall) {
-          const q = points.reduce((a, b) => (a.x > b.x ? a : b));
-          if (q.y >= bounds.bottom && q.y <= bounds.top)
-            constraints.push({
-              item,
-              point: q,
-              normal: { x: -1, y: 0 },
-              gap: bounds.right - q.x,
-              label: "Right wall",
-            });
-        }
+        const inside = points.filter(
+          (q) => q.y >= bounds.bottom && q.y <= bounds.top,
+        );
+        if (this.config.leftWall)
+          touching(inside, (q) => q.x - bounds.left, { x: 1, y: 0 }, "Left wall");
+        if (this.config.rightWall)
+          touching(
+            inside,
+            (q) => bounds.right - q.x,
+            { x: -1, y: 0 },
+            "Right wall",
+          );
       }
     }
     return constraints;
@@ -278,7 +281,7 @@ export class Simulation {
     for (const c of this.tieBoundaryConstraints()) {
       const body = c.item.body;
       if (!velocities) {
-        if (c.gap < 0) {
+        if (c.primary && c.gap < 0) {
           const p = body.translation();
           body.setTranslation(
             { x: p.x - c.normal.x * c.gap, y: p.y - c.normal.y * c.gap },

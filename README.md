@@ -58,13 +58,55 @@ The application occupies the viewport without document scrolling. **01 Build** s
 7. Rescaling or moving the photo also transforms its traced blocks, including the contact geometry. This pauses playback and starts a new trial from the transformed scene. Removing the image preserves the calibrated viewport and boundaries; generated examples start their own default viewport.
 8. Export the experiment as JSON to preserve geometry, physical parameters and the embedded photo. Import restores the complete reference. The reference image remains stationary during playback while traced bodies move over it.
 
-Photos are decoded and processed locally in the browser, reduced to a maximum 2048-pixel longest dimension and embedded as JPEG in exports. No photo upload server, external image API or recognition service is used. Images are not written into the repository by the app. Automatic edge detection/stone recognition is not implemented; the current workflow is manual tracing.
+Photos are decoded and processed locally in the browser, reduced to a maximum 2048-pixel longest dimension and embedded as JPEG in exports. No photo upload server, external image API or recognition service is used. Images are not written into the repository by the app.
+
+### Automatic stone recognition
+
+**Photo & tracing → Automatic stone recognition** outlines the stones of the loaded photo locally (`src/stone-detect.js`):
+
+1. The photo is resampled to 300/500/800 px, converted to grey and lightly blurred.
+2. A pixel is stone if it passes a local adaptive threshold (brighter than the local mean minus *Sensitivity* when joints are darker; the reverse for lighter joints) and a relaxed global Otsu bound that rejects the centre of wide joints.
+3. The mask is eroded *Separation* times so stones touching through thin joints split, labelled, and regrown inside the mask. Fragments smaller than *Min stone* are discarded.
+4. *Close joints up to (px)* grows every stone into the surrounding mortar in simultaneous rounds, so neighbours meet midway. With 0 the joints stay open: the stones then settle onto each other under gravity, as in a dry wall whose mortar has been removed.
+5. Outer contours are traced, simplified (Douglas–Peucker with *Outline tolerance*, at most 48 vertices) and pulled 0.5 px inward.
+
+**Detect · preview** draws dashed outlines; **Create blocks** converts them into traced polygon blocks (optionally replacing previous blocks traced on the same photo), which can then be edited, deleted or retraced by hand. Recognition is a heuristic image segmentation, not a learned model: textured stones, shadows and joints similar in colour to the stones need parameter tuning and manual correction.
+
+Concave outlines are triangulated and triangles are merged back into convex pieces across shared diagonals; near-degenerate slivers are dropped before collider creation because they made the contact solver fail.
 
 ## Masonry examples
 
 Choose a pattern under **Masonry examples**, click **Load masonry example**, then Play. The library includes seven historical masonry patterns, **Defensive wall Bologna**, two window walls and three narrow, tall walls inspired by the supplied reference: coursed stones, irregular masonry with fully packed corner-stone interfaces, and rubble with snecks. Each window has a single dynamic monolithic lintel, labelled LINTEL on the canvas. Every stone is an independent convex rigid body. JSON examples and reference filenames are in [`examples/`](examples/README.md).
 
 The examples are procedural approximations of the supplied images. They have no mortar, cohesion or three-dimensional masonry core.
+
+## Equilibrium check and collapse multiplier
+
+The **Analysis** tab of the Inspector quantifies equilibrium and the load margin of the current scene.
+
+**Equilibrium check · current state** (updated during playback):
+
+- total weight ΣW, applied forces ΣF and boundary reactions ΣR;
+- global imbalance |ΣR + ΣW + ΣF| / (W + |F|) — green below 2%;
+- largest block residual |ΣF_i| / W_i and residual moment |M_i| / (W_i r_i) — green below 3%;
+- kinetic energy, maximum speed and time at rest.
+
+**Collapse multiplier λ.** Starting from the initial configuration (the Reset state), the assembly first settles under self-weight. It is *stable under self-weight* if it comes to rest within 8 s, no block leaves through the floor and settling stays below two median block sizes. Then λ grows in *Load steps* up to *λ max*: after each increment the blocks must come back to rest (no block drifting more than 2% of the limit in 0.3 s) with the largest block displacement from the settled state below *Collapse δ* (a percentage of the median block size). The first failing level is refined by five bisections restarting from the last stable state. The result is λc (last stable level), the λ–δ curve and the collapse mechanism, drawn in red on the canvas (darker = larger displacement, lines from the settled positions).
+
+Load patterns (forces at each block centre of mass):
+
+| Pattern | Force on block i | Meaning of λ |
+| --- | --- | --- |
+| Horizontal uniform | λ m_i g | Horizontal acceleration / g, i.e. the α₀ multiplier of the kinematic approach |
+| Horizontal inverse triangular | λ W_i z_i ΣW / Σ(W z) | First-mode distribution; total base shear λ ΣW, z measured from the floor |
+| Vertical self-weight | additional λ W_i | Total weight (1 + λ) W |
+| Vertical applied loads | λ × (block Fx, Fy) | Live-load multiplier with constant self-weight |
+
+For rigid, no-tension frictional blocks under gravity alone, equilibrium is scale-invariant: multiplying self-weight does not create a mechanism. The self-weight pattern therefore usually reaches λ max; collapse needs applied loads, horizontal actions or a geometry that is already unstable. Horizontal patterns can be applied to the left or right. Container walls or side supports restrain lateral mechanisms, so choose **Open sides** for free-standing walls.
+
+**Pre / post ties** runs the same analysis twice — without the scene's ties (pre) and with them (post) — and reports the gain λc,post / λc,pre ("stabilised" when only the tied scene stands under self-weight). A tie joins exactly two blocks: ties attached to single stones can extract them, so a tie layout may also lower λc. **Apply λ · pattern to the scene** adds the pattern forces with a chosen λ to the interactive simulation, to watch the response with Play.
+
+These are numerical estimates from rigid-block dynamics with quasi-static load steps; they depend on friction, contact tolerances and the displacement limit, and are not a certified structural assessment.
 
 ## Physics and limitations
 
@@ -98,6 +140,9 @@ node scripts/photo-browser-check.mjs
 - `src/alotia-import.js`: validated ALoTiA JSON and Abaqus INP block conversion.
 - `src/photo.js`: local image processing, embedded-photo validation and calibration transforms.
 - `src/physics.js`: rigid bodies, contacts, generation and diagnostics.
+- `src/collapse.js`: equilibrium report, incremental collapse multiplier and pre/post tie comparison.
+- `src/analysis-ui.js`: Analysis tab, results table and λ–δ curve.
+- `src/stone-detect.js`: local stone segmentation and contour extraction from photos.
 - `src/scenarios.js`: ten masonry patterns, clipping and polygonal stone generation.
 - `src/ui.js`: English interface, credits and model dialogs.
 - `src/main.js`: rendering, interaction and JSON exchange.

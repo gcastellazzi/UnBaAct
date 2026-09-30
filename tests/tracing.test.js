@@ -125,3 +125,19 @@ test("photo scaling preserves registration, scales area and ignores other bodies
   );
   assert.deepEqual(untouched, other);
 });
+test("nearly convex detected outline merges slivers and simulates", () => {
+  const v = [
+    -0.6496, 0.4434, -0.6887, 0.3249, -0.6478, 0.1471, -0.6693, -0.4048,
+    -0.6298, -0.4442, 0.6339, -0.4253, 0.6736, -0.3859, 0.6735, 0.385,
+    0.6338, 0.4244,
+  ];
+  assert.ok(decomposePolygon(v).length <= 3);
+  const s = new Simulation({ boundary: "free" });
+  try {
+    s.add({ shape: "polygon", vertices: v, x: 6, y: 1, r: 0.8 });
+    for (let k = 0; k < 300; k++) s.step();
+    assert.ok(s.items[0].body.translation().y < 0.5);
+  } finally {
+    s.dispose();
+  }
+});

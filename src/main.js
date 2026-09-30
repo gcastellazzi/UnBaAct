@@ -15,6 +15,8 @@ import {
   transformTracedSpecs,
 } from "./photo.js";
 import { interfaceHTML } from "./ui.js";
+import { setupAnalysis } from "./analysis-ui.js";
+import { detectStones } from "./stone-detect.js";
 import { OPUS_SCENARIOS, generateOpus } from "./scenarios.js";
 import "./style.css";
 import {
@@ -67,6 +69,7 @@ let tieDraft = null,
   initialTies = [];
 let loadValues = new Map(),
   loadColorReference = 1;
+let stonePreview = [];
 let photo = null,
   draft = [],
   calibration = [],
@@ -205,6 +208,19 @@ $("#loadScale").onchange = () => {
   $("#loadReferenceLabel").hidden = $("#loadScale").value !== "fixed";
 };
 renderGroups();
+const analysis = setupAnalysis({
+  scene: () => ({
+    specs: sim.time === 0 ? sim.specs() : initial,
+    ties: sim.time === 0 ? sim.tieSpecs() : initialTies,
+    config: config(),
+  }),
+  sim: () => sim,
+  pause: () => {
+    running = false;
+    updatePlay();
+  },
+  message,
+});
 function rebuild(specs, ties = []) {
   sim?.dispose();
   sim = new Simulation(config());
@@ -225,6 +241,7 @@ function rebuild(specs, ties = []) {
   acc = 0;
   draft = [];
   calibration = [];
+  stonePreview = [];
   $("#imperfections").checked = sim.items.some(
     (i) => i.role === "imperfection",
   );
@@ -687,6 +704,93 @@ $("#undoVertex").onclick = () => draft.pop();
 $("#cancelTrace").onclick = () => {
   draft = [];
   calibration = [];
+};
+$("#detectSensitivity").oninput = () =>
+  ($("#detectSensitivityValue").textContent = $("#detectSensitivity").value);
+$("#detectStones").onclick = () => {
+  if (!photo) {
+    message("Load a photo first.");
+    return;
+  }
+  const minArea = +$("#detectMinArea").value,
+    separation = Math.round(+$("#detectSeparation").value),
+    fillJoints = Math.round(+$("#detectFill").value),
+    simplify = +$("#detectSimplify").value;
+  if (
+    !(minArea >= 0.01 && minArea <= 20) ||
+    !(separation >= 0 && separation <= 8) ||
+    !(fillJoints >= 0 && fillJoints <= 30) ||
+    !(simplify >= 0.5 && simplify <= 10)
+  ) {
+    message(
+      "Min stone 0.01–20%, separation 0–8 px, joints 0–30 px, tolerance 0.5–10 px.",
+    );
+    return;
+  }
+  const image = photo.image,
+    ratio = Math.min(
+      1,
+      +$("#detectResolution").value /
+        Math.max(image.naturalWidth, image.naturalHeight),
+    ),
+    c = document.createElement("canvas");
+  c.width = Math.max(8, Math.round(image.naturalWidth * ratio));
+  c.height = Math.max(8, Math.round(image.naturalHeight * ratio));
+  const g = c.getContext("2d", { willReadFrequently: true });
+  g.drawImage(image, 0, 0, c.width, c.height);
+  const pixels = g.getImageData(0, 0, c.width, c.height);
+  const stones = detectStones(
+    { data: pixels.data, width: c.width, height: c.height },
+    {
+      jointsDark: $("#detectJoints").value === "dark",
+      sensitivity: +$("#detectSensitivity").value,
+      separation,
+      fillJoints,
+      minArea: minArea / 100,
+      simplify,
+      maxStones: 400,
+    },
+  );
+  const b = photoBounds(photo),
+    sx = (b.right - b.left) / c.width,
+    sy = (b.top - b.bottom) / c.height;
+  stonePreview = stones.map((s) =>
+    s.points.map((p) => ({ x: b.left + p.x * sx, y: b.top - p.y * sy })),
+  );
+  running = false;
+  updatePlay();
+  $("#detectStatus").textContent = stonePreview.length
+    ? `${stonePreview.length} stones detected (dashed). Create blocks, or adjust the parameters and detect again.`
+    : "No stones found: change the joint colour, sensitivity or minimum size.";
+};
+$("#clearDetection").onclick = () => (stonePreview = []);
+$("#acceptStones").onclick = () => {
+  if (!photo || !stonePreview.length || running) return;
+  if ($("#detectReplace").checked)
+    for (const i of [...sim.items])
+      if (i.photoId === photo.data.id && i.role === "traced-block")
+        sim.remove(i);
+  let created = 0,
+    rejected = 0;
+  for (const outline of stonePreview) {
+    if (sim.items.length >= 400) {
+      rejected++;
+      continue;
+    }
+    try {
+      sim.add(contourSpec(outline, photo.data.id));
+      created++;
+    } catch {
+      rejected++;
+    }
+  }
+  stonePreview = [];
+  selected = null;
+  edited();
+  $("#tool").value = "select";
+  message(
+    `${created} blocks created${rejected ? `, ${rejected} outlines rejected` : ""}. Check them, then Play or run an analysis.`,
+  );
 };
 $("#tool").onchange = () => {
   tieDraft = null;
@@ -1168,11 +1272,8 @@ new ResizeObserver(() => {
   ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
   updateCamera();
 }).observe(canvas.parentElement);
-function particle(spec, p, a, ghost = false) {
-  const q = screen(p);
-  ctx.save();
-  ctx.translate(q.x, q.y);
-  ctx.rotate(-a);
+// Outline of a block around its own origin, in screen units; returns radius.
+function shapePath(spec) {
   ctx.beginPath();
   const r = spec.r * scale;
   if (spec.shape === "disk") ctx.arc(0, 0, r, 0, Math.PI * 2);
@@ -1192,6 +1293,36 @@ function particle(spec, p, a, ghost = false) {
     ctx.lineTo(r, r * 0.75);
     ctx.closePath();
   }
+  return r;
+}
+function drawMechanism(blocks) {
+  const move = (m) => Math.hypot(m.dx, m.dy) + Math.abs(m.rotation) * m.r;
+  const max = Math.max(1e-9, ...blocks.map(move));
+  for (const m of blocks) {
+    const u = move(m) / max;
+    if (u < 0.05) continue;
+    const q = screen(m);
+    ctx.save();
+    ctx.translate(q.x, q.y);
+    ctx.rotate(-m.angle);
+    shapePath(m);
+    ctx.fillStyle = `rgba(196, 58, 49, ${0.12 + 0.4 * u})`;
+    ctx.strokeStyle = "#b8332b";
+    ctx.lineWidth = 1.2;
+    ctx.setLineDash([5, 3]);
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+    line(m.reference, m, "#b8332b", 1.5);
+  }
+  ctx.setLineDash([]);
+}
+function particle(spec, p, a, ghost = false) {
+  const q = screen(p);
+  ctx.save();
+  ctx.translate(q.x, q.y);
+  ctx.rotate(-a);
+  const r = shapePath(spec);
   ctx.fillStyle = ghost
     ? "#dce5e540"
     : $("#blockColorMode").value === "load" && !ghost
@@ -1330,6 +1461,30 @@ function draw() {
       ctx.stroke();
     }
   }
+  const mechanism = analysis.state.mechanism;
+  if (
+    mechanism &&
+    $("#showMechanism").checked &&
+    mechanism.every((m) => sim.items.some((i) => i.id === m.id))
+  )
+    drawMechanism(mechanism);
+  if (stonePreview.length) {
+    ctx.setLineDash([5, 3]);
+    for (const outline of stonePreview) {
+      const p = outline.map(screen);
+      ctx.beginPath();
+      p.forEach((q, k) => (k ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y)));
+      ctx.closePath();
+      ctx.fillStyle = "#e0892a22";
+      ctx.fill();
+      ctx.strokeStyle = "#c46a12";
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+    }
+    ctx.setLineDash([]);
+  }
+  $("#acceptStones").disabled = !stonePreview.length || running;
+  $("#clearDetection").disabled = !stonePreview.length;
   if (tieDraft) {
     const p = worldAnchor(tieDraft.item, tieDraft.anchor);
     if (pointer) {
@@ -1512,6 +1667,7 @@ function draw() {
   }
   if (!selected) groupSelect.dataset.item = "";
   drawBlockDiagram($("#blockDiagram"), selected, sim);
+  analysis.updateReport(performance.now());
   if (selected) {
     const r = selected.residual;
     const cs = sim.contacts.filter((c) => c.a === selected || c.b === selected);

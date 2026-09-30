@@ -1,4 +1,5 @@
 import { worldAnchor } from "./ties.js";
+import { analysisHTML } from "./analysis-ui.js";
 export const defaultGroups = (friction = 0.45) => [
   { id: "regular", name: "Regular blocks", friction, color: "#dc9d68" },
   { id: "irregular", name: "Irregular blocks", friction, color: "#87b8ac" },
@@ -23,7 +24,7 @@ export function setupInspector() {
   const tabs = document.createElement("div");
   tabs.className = "inspector-tabs";
   tabs.setAttribute("role", "tablist");
-  tabs.innerHTML = ["Observe", "Groups", "Block"]
+  tabs.innerHTML = ["Observe", "Groups", "Block", "Analysis"]
     .map(
       (name, n) =>
         `<button role="tab" id="tab-button-${name.toLowerCase()}" aria-controls="tab-${name.toLowerCase()}" aria-selected="${n === 0}" tabindex="${n === 0 ? 0 : -1}">${name}</button>`,
@@ -74,7 +75,13 @@ export function setupInspector() {
   removeTies.textContent = "Remove this block’s ties";
   removeTies.disabled = true;
   block.querySelector(".load-controls").append(removeTies);
-  panel.append(groups, block);
+  const analysis = document.createElement("div");
+  analysis.id = "tab-analysis";
+  analysis.className = "sidebar-content";
+  analysis.hidden = true;
+  analysis.setAttribute("role", "tabpanel");
+  analysis.innerHTML = analysisHTML;
+  panel.append(groups, block, analysis);
   const activate = (button) => {
     for (const b of tabs.children) {
       const active = b === button;
@@ -93,10 +100,10 @@ export function setupInspector() {
           event.key === "Home"
             ? 0
             : event.key === "End"
-              ? 2
+              ? buttons.length - 1
               : (buttons.indexOf(button) +
-                  (event.key === "ArrowRight" ? 1 : 2)) %
-                3;
+                  (event.key === "ArrowRight" ? 1 : buttons.length - 1)) %
+                buttons.length;
         activate(buttons[index]);
         buttons[index].focus();
       }

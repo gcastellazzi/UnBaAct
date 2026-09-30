@@ -22,6 +22,22 @@ export function inferGroup(spec) {
     ? "regular"
     : "irregular";
 }
+// Near-degenerate convex parts (area tiny relative to their longest edge²)
+// make Rapier's contact generation panic; drop them while others remain.
+export function withoutSlivers(parts) {
+  const quality = (v) => {
+    let area = 0,
+      edge = 0;
+    for (let k = 0; k < v.length; k += 2) {
+      const n = (k + 2) % v.length;
+      area += v[k] * v[n + 1] - v[n] * v[k + 1];
+      edge = Math.max(edge, Math.hypot(v[n] - v[k], v[n + 1] - v[k + 1]));
+    }
+    return Math.abs(area) / 2 / Math.max(edge * edge, 1e-12);
+  };
+  const kept = parts.filter((v) => quality(v) > 0.005);
+  return kept.length ? kept : [parts.reduce((a, b) => (quality(b) > quality(a) ? b : a))];
+}
 export class Simulation {
   constructor(config = {}) {
     this.config = {
@@ -51,6 +67,7 @@ export class Simulation {
     this.time = 0;
     this.quiet = 0;
     this.nextId = 1;
+    this.action = null;
     this.makeWalls();
   }
   makeWalls() {
@@ -99,7 +116,7 @@ export class Simulation {
       s.r = Math.hypot(s.width, s.height) / 2;
       desc = RAPIER.ColliderDesc.cuboid(s.width / 2, s.height / 2);
     } else if (s.shape === "polygon")
-      parts = decomposePolygon(s.vertices).map((v) =>
+      parts = withoutSlivers(decomposePolygon(s.vertices)).map((v) =>
         RAPIER.ColliderDesc.convexHull(new Float32Array(v)),
       );
     else {
@@ -417,10 +434,42 @@ export class Simulation {
     item.loadX = horizontal;
     this.quiet = 0;
   }
+  // Load multiplier pattern: additional forces λ·F_i at each centre of mass.
+  // Horizontal patterns use the heights frozen when the action is set.
+  setAction(pattern = "none", lambda = 0, direction = 1) {
+    if (pattern === "none" || !lambda) {
+      this.action = null;
+      for (const i of this.items) i.actionForce = { x: 0, y: 0 };
+      this.quiet = 0;
+      return;
+    }
+    const forces = actionPattern(
+      this.items.map((i) => ({
+        mass: i.body.mass(),
+        y: i.body.worldCom().y,
+        load: i.load,
+        loadX: i.loadX,
+      })),
+      pattern,
+      this.config.gravity,
+      this.config.bounds?.bottom ?? 0,
+    );
+    const sign = ["uniform", "triangular"].includes(pattern) ? direction : 1;
+    this.items.forEach((i, k) => {
+      i.actionForce = {
+        x: forces[k].x * lambda * sign,
+        y: forces[k].y * lambda,
+      };
+    });
+    this.action = { pattern, lambda, direction };
+    this.quiet = 0;
+  }
   step() {
     for (const i of this.items) {
       i.body.resetForces(true);
-      if (i.load || i.loadX) i.body.addForce({ x: i.loadX, y: -i.load }, true);
+      const fx = i.loadX + (i.actionForce?.x ?? 0),
+        fy = -i.load + (i.actionForce?.y ?? 0);
+      if (fx || fy) i.body.addForce({ x: fx, y: fy }, true);
     }
     const prev = this.items.map((i) => ({
       v: i.body.linvel(),
@@ -552,6 +601,28 @@ export class Simulation {
   dispose() {
     this.world.free();
   }
+}
+// Unit (λ = 1) force pattern per block. "uniform": F = m g (horizontal,
+// α0-type seismic coefficient). "triangular": F = m g z ΣW / Σ(W z), the
+// inverse-triangular first-mode distribution with the same base shear.
+// "gravity": additional self-weight. "loads": applied block loads.
+export function actionPattern(blocks, pattern, gravity, base = 0) {
+  if (pattern === "uniform")
+    return blocks.map((b) => ({ x: b.mass * gravity, y: 0 }));
+  if (pattern === "triangular") {
+    const z = blocks.map((b) => Math.max(0, b.y - base)),
+      total = blocks.reduce((s, b) => s + b.mass, 0),
+      moment = blocks.reduce((s, b, k) => s + b.mass * z[k], 0);
+    return blocks.map((b, k) => ({
+      x: moment > 0 ? (b.mass * gravity * z[k] * total) / moment : 0,
+      y: 0,
+    }));
+  }
+  if (pattern === "gravity")
+    return blocks.map((b) => ({ x: 0, y: -b.mass * gravity }));
+  if (pattern === "loads")
+    return blocks.map((b) => ({ x: b.loadX || 0, y: -(b.load || 0) }));
+  return blocks.map(() => ({ x: 0, y: 0 }));
 }
 export function generate(seed, count, shape = "disk") {
   const rand = random(seed);

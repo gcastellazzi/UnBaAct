@@ -107,7 +107,58 @@ export function decomposePolygon(flat) {
       );
   }
   triangles.push(remaining.flatMap((v) => [v.x, v.y]));
-  return triangles;
+  return mergeConvex(triangles);
+}
+// Hertel–Mehlhorn style merge: join pieces across shared diagonals while the
+// union stays convex. Fewer, fatter pieces avoid near-degenerate sliver
+// triangles, which the contact solver cannot handle robustly.
+function mergeConvex(flatPieces) {
+  const key = (x, y) => x + "," + y;
+  let pieces = flatPieces.map((f) =>
+    Array.from({ length: f.length / 2 }, (_, k) => ({
+      x: f[k * 2],
+      y: f[k * 2 + 1],
+    })),
+  );
+  const convex = (p) =>
+    p.every(
+      (v, k) =>
+        cross(p[(k + p.length - 1) % p.length], v, p[(k + 1) % p.length]) >=
+        -EPS,
+    );
+  let merged = true;
+  while (merged) {
+    merged = false;
+    search: for (let i = 0; i < pieces.length; i++)
+      for (let j = i + 1; j < pieces.length; j++) {
+        const a = pieces[i],
+          b = pieces[j];
+        for (let k = 0; k < a.length; k++) {
+          const p = a[k],
+            q = a[(k + 1) % a.length];
+          const m = b.findIndex(
+            (v, n) =>
+              key(v.x, v.y) === key(q.x, q.y) &&
+              key(b[(n + 1) % b.length].x, b[(n + 1) % b.length].y) ===
+                key(p.x, p.y),
+          );
+          if (m < 0) continue;
+          const union = [
+            ...Array.from({ length: a.length }, (_, n) => a[(k + 1 + n) % a.length]),
+            ...Array.from(
+              { length: b.length - 2 },
+              (_, n) => b[(m + 2 + n) % b.length],
+            ),
+          ];
+          if (!convex(union)) continue;
+          pieces[i] = union;
+          pieces.splice(j, 1);
+          merged = true;
+          break search;
+        }
+      }
+  }
+  return pieces.map((p) => p.flatMap((v) => [v.x, v.y]));
 }
 export function contourSpec(points, photoId) {
   const p = validateContour(points);

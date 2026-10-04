@@ -1,0 +1,70 @@
+import { chromium } from "@playwright/test";
+import assert from "node:assert/strict";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+const browser = await chromium.launch();
+try {
+  const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+  const errors = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  await page.goto("http://127.0.0.1:5173");
+  await page.waitForFunction(() => document.body.dataset.ready === "true");
+  const count = await page.locator("#particles").textContent();
+  await page.click("#tab-button-analysis");
+  await page.selectOption("#analysisType", "foundation");
+  await page.click("#runFoundation");
+  await page.waitForFunction(() => document.querySelector("#foundationSummary").textContent.includes("Winkler"));
+  assert.equal(await page.locator("#foundation-shear").isDisabled(), true);
+  const winkler = await page.locator("#foundationSummary").textContent();
+  await page.selectOption("#foundationModel", "pasternak");
+  assert.equal(await page.locator("#exportFoundation").isDisabled(), true);
+  await page.fill("#foundation-shear", "20000");
+  await page.click("#runFoundation");
+  const pasternak = await page.locator("#foundationSummary").textContent();
+  assert.ok(pasternak.includes("Pasternak") && pasternak.includes("edge reactions"));
+  assert.notEqual(winkler, pasternak);
+  const downloaded = page.waitForEvent("download");
+  await page.click("#exportFoundation");
+  assert.equal((await downloaded).suggestedFilename(), "wall-pasternak.csv");
+  await page.screenshot({ path: join(tmpdir(), "unbaact-foundation.png") });
+  for (const [width, height] of [[1280, 800], [900, 650], [390, 844], [360, 640]]) {
+    await page.setViewportSize({ width, height });
+    await page.waitForTimeout(100);
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+    const stage = await page.locator("#analysisStage").boundingBox();
+    assert.ok(stage.x >= 0 && stage.x + stage.width <= width + 1 && stage.y + stage.height <= height + 1);
+    const chart = await page.locator("#foundation-chart-w").boundingBox();
+    assert.ok(chart.width > 100 && chart.height >= 220);
+  }
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.fill("#foundation-k", "0");
+  await page.click("#runFoundation");
+  assert.ok((await page.locator("#foundationStatus").textContent()).includes("positive"));
+  assert.equal(await page.locator("#exportFoundation").isDisabled(), true);
+  await page.click("#resetFoundation");
+  assert.equal(await page.locator("#particles").textContent(), count);
+  await page.selectOption("#analysisType", "mechanisms");
+  await page.selectOption("#analysisExample", "calibration-block");
+  await page.click("#loadAnalysisExample");
+  await page.fill("#lambdaSteps", "4");
+  await page.click("#runCollapse");
+  await page.waitForFunction(() => document.querySelector("#analysisProgress").textContent.includes("Completed"), null, { timeout: 60000 });
+  assert.equal(await page.locator("#collapseCurve").isVisible(), true);
+  const plot = await page.locator("#collapseCurve").boundingBox();
+  assert.ok(plot.width > 500 && plot.height >= 220);
+  await page.screenshot({ path: join(tmpdir(), "unbaact-mechanisms.png") });
+  await page.click("#expandAnalysis");
+  assert.equal(await page.locator("#scene").isVisible(), false);
+  const expanded = await page.locator("#collapseCurve").boundingBox();
+  assert.ok(expanded.height > plot.height);
+  await page.click("#tab-button-observe");
+  assert.equal(await page.locator("#analysisStage").isVisible(), false);
+  assert.equal(await page.locator("#scene").isVisible(), true);
+  await page.click("#tab-button-analysis");
+  assert.equal(await page.locator("#collapseCurve").isVisible(), true);
+  assert.deepEqual(errors, []);
+  console.log("Foundation models, validation, CSV, responsive charts and collapse analysis: passed.");
+} finally {
+  await browser.close();
+}

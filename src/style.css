@@ -963,3 +963,77 @@ canvas {
   color: var(--primary);
   margin-bottom: 6px;
 }
+
+/* Analysis plots use the central workspace; controls remain in the inspector. */
+[hidden] { display: none !important; }
+.scene-panel.analysis-active {
+  grid-template-rows: 38px minmax(130px, 1fr) minmax(250px, .85fr) auto auto;
+}
+.scene-panel.foundation-active,
+.scene-panel.graphs-expanded {
+  grid-template-rows: 38px minmax(0, 1fr);
+}
+.scene-panel.foundation-active > .canvas-wrap,
+.scene-panel.foundation-active > .transport,
+.scene-panel.foundation-active > #experimentPanel,
+.scene-panel.graphs-expanded > .canvas-wrap,
+.scene-panel.graphs-expanded > .transport,
+.scene-panel.graphs-expanded > #experimentPanel { display: none; }
+#analysisStage {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
+  background: #f8faf7;
+  border-top: 1px solid var(--border);
+  padding: 10px 12px;
+}
+.analysis-stage-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-shrink: 0;
+  color: var(--primary);
+  font-size: 12px;
+}
+.analysis-stage-heading button { padding: 5px 9px; }
+#mechanismGraphs { flex: 1; min-height: 220px; position: relative; }
+#collapseCurve { height: 100%; min-height: 220px; margin: 0; border: 0; }
+#curveEmpty { padding: 22px; line-height: 1.6; }
+#foundationGraphs { min-width: 0; }
+.foundation-summary { font-size: 12px; line-height: 1.6; padding: 10px 0; color: var(--primary); }
+#foundationSketch { height: 180px; }
+.foundation-charts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.foundation-charts figure { min-width: 0; margin: 0; border: 1px solid var(--border); border-radius: 6px; padding: 10px; }
+.foundation-charts figcaption { font-size: 11px; color: var(--primary); font-weight: 600; }
+.foundation-charts canvas { height: 230px; }
+.foundation-note { line-height: 1.6; }
+#foundationControls h3 { font-size: 12px; color: var(--primary); }
+#foundationControls .hint { font-size: 10px; line-height: 1.5; }
+.foundation-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 10px; }
+@media (min-width: 1100px) {
+  .workspace.analysis-active { grid-template-columns: var(--side-width) minmax(0, 1fr) 310px; }
+}
+@media (max-width: 1099px) {
+  .foundation-charts { grid-template-columns: 1fr; }
+  .foundation-fields { grid-template-columns: 1fr; }
+}
+@media (max-height: 700px) {
+  .scene-panel.analysis-active:not(.foundation-active):not(.graphs-expanded) {
+    grid-template-rows: 30px minmax(80px, 1fr) minmax(180px, 1fr) auto;
+  }
+  .scene-panel.analysis-active > #experimentPanel { display: none; }
+}
+@media (max-width: 700px) {
+  .workspace.analysis-active { grid-template-columns: minmax(0, 1fr) 160px; }
+  .workspace.analysis-active > .build-panel { display: none; }
+  .workspace.analysis-active > .scene-panel { grid-column: 1; }
+  .workspace.analysis-active > .observe-panel { grid-column: 2; }
+  .analysis-stage-heading { flex-wrap: wrap; font-size: 10px; }
+  #analysisStage { padding: 7px; }
+  .foundation-charts figure { padding: 4px; }
+  .foundation-charts canvas { height: 220px; }
+  .foundation-summary { font-size: 10px; }
+}

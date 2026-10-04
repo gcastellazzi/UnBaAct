@@ -89,6 +89,7 @@ export function setupInspector() {
       b.tabIndex = active ? 0 : -1;
       $("#" + b.getAttribute("aria-controls")).hidden = !active;
     }
+    document.dispatchEvent(new Event("inspectorchange"));
   };
   for (const button of tabs.children) {
     button.onclick = () => activate(button);

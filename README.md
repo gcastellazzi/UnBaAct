@@ -123,6 +123,56 @@ In the arcade, chains are ineffective against a horizontal sway, where both spri
 
 These are numerical estimates from rigid-block dynamics with quasi-static load steps; they depend on friction, contact tolerances and the displacement limit, and are not a certified structural assessment.
 
+## Wall on elastic foundation
+
+In **Analysis → Analysis type → Wall on elastic foundation**, set the wall
+length, height, thickness, equivalent Young's modulus and density, then choose
+**Winkler** or **Pasternak** and click **Calculate foundation response**.
+**Load wall example** restores a 10 × 2 × 0.3 m wall with self-weight, a uniform
+load and a central point load. This is an independent elastic wall analysis;
+the rigid-block scene and its contacts are preserved, and do not supply this
+case's geometry or loading.
+
+The wall is an Euler–Bernoulli beam with `I = t H³ / 12`, free ends and downward
+settlement `w`. Inputs use m, MPa, kg/m³, kN and kN/m as labelled. Soil modulus
+`k` is in kN/m³ and Pasternak's shear parameter `G` in kN/m; both are multiplied
+by wall thickness to obtain line coefficients. Self-weight is `ρ g t H`.
+The model solves `EI w'''' − Gt w'' + kt w = q` with an optional downward point
+load. Winkler sets `G = 0`; Pasternak adds interaction between neighbouring
+springs. The formulation follows the conventional
+[Pasternak reaction law](https://pmc.ncbi.nlm.nih.gov/articles/PMC11020911/).
+
+The central workspace shows the wall over its springs and four independent
+diagrams: settlement (mm), distributed soil reaction (kN/m), sagging-positive
+moment (kN·m) and beam shear (kN). The sketch magnifies displacement and is
+schematic; the diagrams contain the numerical values. The finite Pasternak
+shear layer also applies end forces `−Gt w'(0)` and `+Gt w'(L)`, reported
+separately and included in the total reaction. The free-end conditions are
+`EI w'' = 0` and `EI w''' − Gt w' = 0`. Consequently the beam shear alone need
+not vanish at Pasternak ends. CSV export contains the plotted samples in SI
+units; paired element-boundary samples preserve jumps in the computed shear.
+
+The solver uses cubic Hermite finite elements with four-point Gauss integration
+and a scaled Cholesky solve. It assumes small deflections, a continuous elastic
+equivalent wall and bilateral soil support, including tension. It does not
+model masonry cracking, loss of contact or plastic soil. Increase the element
+count to check convergence, particularly for moment/shear close to point loads.
+Parameter changes clear stale results until recalculation.
+
+## Mechanism diagrams
+
+Selecting **Analysis** places the load–displacement curves in a wide central
+panel below the mechanism canvas. **Expand graphs** gives the curves the whole
+central area; **Show mechanism + graphs** restores the split view. Changing
+inspector tabs restores the usual scene layout. Axes and curves redraw when
+the viewport changes, and the pre/post tie comparison retains its colour legend.
+
+`tests/foundation.test.js` checks exact uniform settlement, the infinite-beam
+point-load solution, symmetry, force/moment balance, linearity, convergence and
+the zero-shear Pasternak/Winkler limit. With the dev server running,
+`node scripts/analysis-browser-check.mjs` checks both models, input errors, CSV
+export, responsive diagrams and the existing collapse workflow.
+
 ## Physics and limitations
 
 Rigid 2D bodies with areal density determined by material density × wall thickness (default 1 kg/m³ × 1 m), gravity, non-cohesive contacts and Coulomb friction. Friction is assigned by block group, initially Regular blocks (bricks, corner stones, lintels and regular polygon primitives) and Irregular blocks (other polygons and disks). Custom groups can be created and selected blocks reassigned in the Groups tab. Boundary friction is independent. A contact uses the arithmetic mean of its two collider coefficients (Rapier Average rule); no rolling resistance is modeled. Groups and assignments are included in JSON exports; older files initialize both groups from their original coefficient. Disks are not 3D spheres. Numerical penetration tolerances apply. The first physics step uses a gentler positional correction so dense traced contact networks initialize without a large instantaneous impulse; normal PGS correction resumes immediately afterwards.

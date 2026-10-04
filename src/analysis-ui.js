@@ -6,6 +6,7 @@ import {
   equilibriumReport,
 } from "./collapse.js";
 import { ANALYSIS_EXAMPLES } from "./analysis-examples.js";
+import { foundationHTML, setupFoundation } from "./foundation-ui.js";
 
 const $ = (s) => document.querySelector(s);
 const fmt = (v, d = 3) => (Number.isFinite(v) ? v.toFixed(d) : "—");
@@ -35,6 +36,47 @@ const HINTS = {
 };
 
 export function setupAnalysis({ scene, sim, pause, message }) {
+  const tab = $("#tab-analysis");
+  const mechanismControls = document.createElement("div");
+  mechanismControls.id = "mechanismControls";
+  mechanismControls.append(...tab.childNodes);
+  tab.append(mechanismControls);
+  tab.insertAdjacentHTML("afterbegin", '<label>Analysis type<select id="analysisType"><option value="mechanisms">Rigid-block mechanisms · collapse</option><option value="foundation">Wall on elastic foundation</option></select></label>');
+  tab.insertAdjacentHTML("beforeend", foundationHTML);
+  const stage = document.createElement("section");
+  stage.id = "analysisStage";
+  stage.hidden = true;
+  stage.setAttribute("aria-label", "Analysis diagrams");
+  stage.innerHTML = '<div class="analysis-stage-heading"><strong id="analysisStageTitle">Mechanism · load–displacement curves</strong><button id="expandAnalysis" aria-pressed="false">Expand graphs</button></div><div id="mechanismGraphs"><p id="curveEmpty" class="hint">Run an analysis to display load–displacement curves here. The collapse mechanism is shown in the scene above.</p></div><div id="foundationGraphs" hidden></div>';
+  $(".canvas-wrap").after(stage);
+  $("#mechanismGraphs").append($("#collapseCurve"));
+  const foundation = setupFoundation($("#foundationGraphs"), { pause });
+  function layout() {
+    const active = !tab.hidden;
+    const soil = $("#analysisType").value === "foundation";
+    stage.hidden = !active;
+    mechanismControls.hidden = soil;
+    $("#foundationControls").hidden = !soil;
+    $("#mechanismGraphs").hidden = soil;
+    $("#foundationGraphs").hidden = !soil;
+    $("#analysisStageTitle").textContent = soil ? "Wall on elastic foundation" : "Mechanism · load–displacement curves";
+    $("#expandAnalysis").hidden = soil;
+    $(".workspace").classList.toggle("analysis-active", active);
+    $(".scene-panel").classList.toggle("analysis-active", active);
+    $(".scene-panel").classList.toggle("foundation-active", active && soil);
+    $(".scene-panel").classList.toggle("graphs-expanded", active && !soil && $("#expandAnalysis").getAttribute("aria-pressed") === "true");
+    drawCurve();
+    foundation.render();
+  }
+  $("#analysisType").onchange = () => { pause(); layout(); };
+  document.addEventListener("inspectorchange", layout);
+  $("#expandAnalysis").onclick = () => {
+    const on = $("#expandAnalysis").getAttribute("aria-pressed") !== "true";
+    $("#expandAnalysis").setAttribute("aria-pressed", String(on));
+    $("#expandAnalysis").textContent = on ? "Show mechanism + graphs" : "Expand graphs";
+    layout();
+  };
+  new ResizeObserver(() => { drawCurve(); }).observe($("#mechanismGraphs"));
   let controller = null;
   const results = [];
   const state = { mechanism: null };
@@ -73,6 +115,7 @@ export function setupAnalysis({ scene, sim, pause, message }) {
     for (const id of ["runCollapse", "runComparison", "applyAction"])
       $("#" + id).disabled = on;
     $("#cancelAnalysis").disabled = !on;
+    $("#analysisType").disabled = on;
   };
   async function run(compare) {
     let opts;
@@ -202,17 +245,17 @@ export function setupAnalysis({ scene, sim, pause, message }) {
     const canvas = $("#collapseCurve");
     const curves = results.filter((r) => r.curve.length > 1);
     canvas.hidden = !curves.length;
+    $("#curveEmpty").hidden = !!curves.length;
     if (!curves.length || canvas.closest("[hidden]")) return;
     const w = Math.max(160, canvas.clientWidth),
-      h = 170,
+      h = Math.max(220, canvas.clientHeight),
       dpr = devicePixelRatio;
     canvas.width = w * dpr;
     canvas.height = h * dpr;
-    canvas.style.height = h + "px";
     const ctx = canvas.getContext("2d");
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, w, h);
-    const pad = { l: 38, r: 10, t: 10, b: 28 };
+    const pad = { l: 56, r: 24, t: 64, b: 42 };
     const shown = curves.slice(-4);
     const maxL = Math.max(...shown.map((r) => r.upper ?? r.lambda), 1e-3) * 1.08,
       maxD = Math.max(...shown.flatMap((r) => r.curve.map((p) => p.delta)), ...shown.map((r) => r.limit)) * 1.05;
@@ -226,7 +269,7 @@ export function setupAnalysis({ scene, sim, pause, message }) {
     ctx.lineTo(w - pad.r, h - pad.b);
     ctx.stroke();
     ctx.fillStyle = "#5d6f6a";
-    ctx.font = "10px system-ui";
+    ctx.font = "12px system-ui";
     ctx.textAlign = "right";
     ctx.fillText(fmt(maxL, 2), pad.l - 4, pad.t + 8);
     ctx.fillText("0", pad.l - 4, h - pad.b);
@@ -238,6 +281,14 @@ export function setupAnalysis({ scene, sim, pause, message }) {
     ctx.rotate(-Math.PI / 2);
     ctx.fillText("λ", 0, 0);
     ctx.restore();
+    for (let i = 1; i <= 4; i++) {
+      ctx.strokeStyle = "#dce5df";
+      ctx.beginPath(); ctx.moveTo(pad.l, Y(maxL*i/4)); ctx.lineTo(w - pad.r, Y(maxL*i/4)); ctx.stroke();
+      ctx.textAlign = "right";
+      if (i < 4) ctx.fillText(fmt(maxL*i/4, 2), pad.l - 5, Y(maxL*i/4) + 4);
+      ctx.textAlign = "center";
+      if (i < 4) ctx.fillText(fmt(maxD*i/4, 3), X(maxD*i/4), h - pad.b + 16);
+    }
     const colors = ["#8c5a2b", "#1c769c", "#b04468", "#4d7d3a"];
     shown.forEach((r, n) => {
       const color = colors[n % colors.length];
@@ -260,7 +311,7 @@ export function setupAnalysis({ scene, sim, pause, message }) {
         ctx.setLineDash([]);
       }
       ctx.textAlign = "left";
-      ctx.fillText(`${r.label} λc ${fmt(r.lambda, 3)}`, pad.l + 6, pad.t + 10 + n * 12);
+      ctx.fillText(`${r.label} λc ${r.bounded ? "" : "> "}${fmt(r.lambda, 3)}`, pad.l + 6, 14 + n * 14);
     });
   }
 

@@ -6,7 +6,7 @@ import {
   equilibriumReport,
 } from "./collapse.js";
 import { ANALYSIS_EXAMPLES } from "./analysis-examples.js";
-import { foundationHTML, setupFoundation } from "./foundation-ui.js";
+import { foundationHTML, setupFoundation, drawDiagram } from "./foundation-ui.js";
 
 const $ = (s) => document.querySelector(s);
 const fmt = (v, d = 3) => (Number.isFinite(v) ? v.toFixed(d) : "—");
@@ -43,23 +43,29 @@ export function setupAnalysis({ scene, sim, pause, message }) {
   tab.append(mechanismControls);
   tab.insertAdjacentHTML("afterbegin", '<label>Analysis type<select id="analysisType"><option value="mechanisms">Rigid-block mechanisms · collapse</option><option value="foundation">Wall on elastic foundation</option></select></label>');
   tab.insertAdjacentHTML("beforeend", foundationHTML);
+  $("#analysisType").insertAdjacentHTML("beforeend", '<option value="coupled">Block wall · elastic footing</option>');
+  tab.insertAdjacentHTML("beforeend", '<section id="coupledControls" hidden><h3>Coupled masonry foundation</h3><p class="hint">Load a block example, then open Build → Foundation &amp; elastic soil. Choose the footing pattern and apply it. Press Play to settle the complete assembly.</p><p class="hint">For collapse or pre/post tie analysis, select Rigid-block mechanisms: the active elastic foundation is included automatically.</p><div id="coupledReport" class="equilibrium-report" role="status"></div><p class="hint">The plots show the live scene. Soil reaction includes the transfer beam weight. The beam is horizontally restrained, with vertical flexibility and free bending ends. Soil is bilateral; block contacts can open.</p></section>');
   const stage = document.createElement("section");
   stage.id = "analysisStage";
   stage.hidden = true;
   stage.setAttribute("aria-label", "Analysis diagrams");
   stage.innerHTML = '<div class="analysis-stage-heading"><strong id="analysisStageTitle">Mechanism · load–displacement curves</strong><button id="expandAnalysis" aria-pressed="false">Expand graphs</button></div><div id="mechanismGraphs"><p id="curveEmpty" class="hint">Run an analysis to display load–displacement curves here. The collapse mechanism is shown in the scene above.</p></div><div id="foundationGraphs" hidden></div>';
   $(".canvas-wrap").after(stage);
+  stage.insertAdjacentHTML("beforeend", '<div id="coupledGraphs" hidden><div class="foundation-charts"><figure><figcaption>Transfer beam settlement (mm) · positive down</figcaption><canvas id="coupledSettlement" aria-label="Live transfer beam settlement"></canvas></figure><figure><figcaption>Soil reaction (kN/m) · positive up</figcaption><canvas id="coupledReaction" aria-label="Live soil reaction"></canvas></figure></div></div>');
   $("#mechanismGraphs").append($("#collapseCurve"));
   const foundation = setupFoundation($("#foundationGraphs"), { pause });
   function layout() {
     const active = !tab.hidden;
     const soil = $("#analysisType").value === "foundation";
+    const coupled = $("#analysisType").value === "coupled";
     stage.hidden = !active;
-    mechanismControls.hidden = soil;
+    mechanismControls.hidden = soil || coupled;
+    $("#coupledControls").hidden = !coupled;
+    $("#coupledGraphs").hidden = !coupled;
     $("#foundationControls").hidden = !soil;
-    $("#mechanismGraphs").hidden = soil;
+    $("#mechanismGraphs").hidden = soil || coupled;
     $("#foundationGraphs").hidden = !soil;
-    $("#analysisStageTitle").textContent = soil ? "Wall on elastic foundation" : "Mechanism · load–displacement curves";
+    $("#analysisStageTitle").textContent = soil ? "Wall on elastic foundation" : coupled ? "Coupled foundation · live response" : "Mechanism · load–displacement curves";
     $("#expandAnalysis").hidden = soil;
     $(".workspace").classList.toggle("analysis-active", active);
     $(".scene-panel").classList.toggle("analysis-active", active);
@@ -67,6 +73,7 @@ export function setupAnalysis({ scene, sim, pause, message }) {
     $(".scene-panel").classList.toggle("graphs-expanded", active && !soil && $("#expandAnalysis").getAttribute("aria-pressed") === "true");
     drawCurve();
     foundation.render();
+    drawCoupled();
   }
   $("#analysisType").onchange = () => { pause(); layout(); };
   document.addEventListener("inspectorchange", layout);
@@ -77,6 +84,7 @@ export function setupAnalysis({ scene, sim, pause, message }) {
     layout();
   };
   new ResizeObserver(() => { drawCurve(); }).observe($("#mechanismGraphs"));
+  new ResizeObserver(() => { drawCoupled(); }).observe($("#coupledGraphs"));
   let controller = null;
   const results = [];
   const state = { mechanism: null };
@@ -316,10 +324,21 @@ export function setupAnalysis({ scene, sim, pause, message }) {
   }
 
   let lastReport = 0;
+  function drawCoupled() {
+    if ($("#coupledGraphs").closest("[hidden]")) return;
+    const s = sim(), base = s?.base;
+    const r = base?.report();
+    const chart = base ? { parameters: { length: base.p.right - base.p.left },
+      samples: r.samples.map((p) => ({ ...p, x: p.x - base.p.left })) } : null;
+    drawDiagram($("#coupledSettlement"), chart, "w", 1000, "#1c769c");
+    drawDiagram($("#coupledReaction"), chart, "reaction", .001, "#4d7d3a");
+    $("#coupledReport").innerHTML = base ? `<dl><dt>Model</dt><dd>${base.p.model}</dd><dt>Footing blocks</dt><dd>${s.items.filter((i) => i.foundationBlock).length}</dd><dt>Max settlement</dt><dd>${fmt(r.maxSettlement*1000)} mm</dd><dt>Soil reaction</dt><dd>${fmt(r.soilReaction/1000)} kN</dd><dt>Transfer beam weight</dt><dd>${fmt(r.mass*s.config.gravity/1000)} kN</dd></dl>${r.minSettlement < -1e-6 || r.samples.some((p) => p.reaction < -1) ? '<p class="hint">Soil tension/uplift present in the bilateral model.</p>' : ''}` : '<p class="hint">Rigid floor active. Add an elastic footing in Build.</p>';
+  }
   function updateReport(now) {
-    if (now - lastReport < 250 || $("#equilibriumReport").closest("[hidden]"))
-      return;
+    if (now - lastReport < 250) return;
     lastReport = now;
+    drawCoupled();
+    if ($("#equilibriumReport").closest("[hidden]")) return;
     const s = sim(),
       r = equilibriumReport(s);
     if (!r.computed || !s.items.length) {

@@ -1,6 +1,7 @@
 import { localAnchor, projectTies } from "./ties.js";
 import { decomposePolygon } from "./geometry.js";
 import RAPIER from "@dimforge/rapier2d-compat";
+import { ElasticBase, baseSystem } from "./elastic-base.js";
 export async function initialize() {
   await RAPIER.init();
 }
@@ -50,6 +51,7 @@ export class Simulation {
       rightWall: true,
       ...config,
     };
+    if (this.config.elasticBase) baseSystem(this.config.elasticBase, this.config.thickness);
     this.world = new RAPIER.World({ x: 0, y: -this.config.gravity });
     this.world.timestep = DT;
     this.world.integrationParameters.switchToStandardPgsSolver();
@@ -71,6 +73,9 @@ export class Simulation {
     this.makeWalls();
   }
   makeWalls() {
+    const baseState = this.base?.snapshot();
+    this.base?.dispose();
+    this.base = null;
     for (const c of this.walls) this.world.removeCollider(c, true);
     this.walls = [];
     const wall = (x, y, hx, hy, label) => {
@@ -90,7 +95,10 @@ export class Simulation {
     } = this.config.bounds || {};
     const width = right - left,
       height = top - bottom;
-    wall((left + right) / 2, bottom - 0.2, width / 2, 0.2, "Floor");
+    if (this.config.elasticBase) {
+      this.base = new ElasticBase(this.world, this.config.elasticBase, this.config.thickness, this.config.friction);
+      if (baseState?.length === this.base.n) this.base.restore(baseState);
+    } else wall((left + right) / 2, bottom - 0.2, width / 2, 0.2, "Floor");
     if (this.config.boundary === "cup") {
       if (this.config.leftWall)
         wall(left - 0.2, (bottom + top) / 2, 0.2, height / 2, "Left wall");
@@ -254,7 +262,7 @@ export class Simulation {
               primary: gap(q) === deepest,
             });
       };
-      touching(
+      if (!this.base) touching(
         points.filter((q) => q.x >= bounds.left && q.x <= bounds.right),
         (q) => q.y - bounds.bottom,
         { x: 0, y: 1 },
@@ -370,6 +378,7 @@ export class Simulation {
           "role",
           "photoId",
           "group",
+          "foundationBlock",
         ].map((k) => [k, i[k]]),
       ),
       ...i.body.translation(),
@@ -389,18 +398,25 @@ export class Simulation {
     this.quiet = 0;
   }
   configure(config) {
+    const nextConfig = { ...this.config, ...config };
+    if (nextConfig.elasticBase) baseSystem(nextConfig.elasticBase, nextConfig.thickness);
     const oldDensity = this.config.thickness * this.config.materialDensity;
     const oldBounds = JSON.stringify(this.config.bounds);
+    const oldBase = JSON.stringify(this.config.elasticBase);
+    const oldThickness = this.config.thickness;
     const boundary = ["boundary", "leftWall", "rightWall"].some(
       (k) => config[k] !== undefined && config[k] !== this.config[k],
     );
     Object.assign(this.config, config);
     this.world.gravity.y = -this.config.gravity;
-    if (boundary || oldBounds !== JSON.stringify(this.config.bounds)) {
+    if (boundary || oldBounds !== JSON.stringify(this.config.bounds) ||
+        oldBase !== JSON.stringify(this.config.elasticBase) ||
+        (this.base && oldThickness !== this.config.thickness)) {
       this.makeWalls();
       this.contacts = [];
     }
     for (const c of this.walls) c.setFriction(this.config.friction);
+    for (const s of this.base?.strips ?? []) s.collider.setFriction(this.config.friction);
     for (const item of this.items)
       for (const c of item.colliders)
         c.setFriction(this.groupFriction(item.group));
@@ -480,25 +496,50 @@ export class Simulation {
     }));
     for (const tie of this.ties) tie.force = { x: 0, y: 0 };
     this.tieBoundaryContacts.clear();
-    projectTies(this.ties, {
-      positions: true,
-      velocities: true,
-      dt: DT,
-      positionCorrection: () => this.projectTieBoundaries(),
-      velocityCorrection: () => this.projectTieBoundaries(true),
-    });
-    this.world.step();
-    // Only the import/initialization step needs the gentler correction. Restore
-    // Standard PGS behaviour for subsequent impacts and resting contacts.
-    if (this.time === 0) this.world.integrationParameters.erp = 0.8;
-    projectTies(this.ties, {
-      positions: true,
-      velocities: true,
-      dt: DT,
-      iterations: 48,
-      positionCorrection: () => this.projectTieBoundaries(),
-      velocityCorrection: () => this.projectTieBoundaries(true),
-    });
+    const substeps = this.base?.substeps ?? 1;
+    const subdt = DT/substeps;
+    this.world.timestep = subdt;
+    const contactSteps = new Map();
+    for (let substep = 0; substep < substeps; substep++) {
+      this.base?.apply();
+      projectTies(this.ties, {
+        positions: true,
+        velocities: true,
+        dt: subdt,
+        positionCorrection: () => this.projectTieBoundaries(),
+        velocityCorrection: () => this.projectTieBoundaries(true),
+      });
+      this.world.step();
+      // Only the import/initialization step needs the gentler correction.
+      if (this.time === 0) this.world.integrationParameters.erp = 0.8;
+      projectTies(this.ties, {
+        positions: true,
+        velocities: true,
+        dt: subdt,
+        iterations: 48,
+        positionCorrection: () => this.projectTieBoundaries(),
+        velocityCorrection: () => this.projectTieBoundaries(true),
+      });
+      this.readContacts();
+      // readContacts divides each impulse by the OUTER timestep; summing
+      // substeps gives a mean force, not a substep-count multiple of it.
+      for (const c of this.contacts) {
+        const previous = contactSteps.get(c.key);
+        if (!previous) contactSteps.set(c.key, c);
+        else {
+          const total = previous.fn + c.fn;
+          previous.point = { x: (previous.point.x*previous.fn + c.point.x*c.fn)/total,
+            y: (previous.point.y*previous.fn + c.point.y*c.fn)/total };
+          previous.fn = total;
+          previous.ft += c.ft;
+        }
+      }
+    }
+    for (const tie of this.ties) {
+      tie.force.x /= substeps;
+      tie.force.y /= substeps;
+    }
+    this.world.timestep = DT;
     this.time += DT;
     let speed = 0;
     for (let k = 0; k < this.items.length; k++) {
@@ -516,8 +557,9 @@ export class Simulation {
         Math.abs(i.body.angvel()) * i.r,
       );
     }
-    this.readContacts();
+    this.contacts = [...contactSteps.values()];
     this.contacts.push(...this.tieBoundaryContacts.values());
+    if (this.base) speed = Math.max(speed, this.base.report().speed);
     this.quiet = speed < 0.025 ? this.quiet + DT : 0;
     this.speed = speed;
   }
@@ -548,6 +590,7 @@ export class Simulation {
               const p = a.body.translation(),
                 ang = a.body.rotation();
               this.contacts.push({
+                key: key + ":" + k,
                 a,
                 b: lookup.get(b.handle) || null,
                 wall: b.label || "Boundary",
@@ -582,7 +625,7 @@ export class Simulation {
       );
     }).length;
     const escaped = this.items.some(
-      (i) => i.body.translation().y < (this.config.bounds?.bottom || 0) - 0.6,
+      (i) => i.body.translation().y < (this.base?.p.top ?? this.config.bounds?.bottom ?? 0) - 0.6,
     );
     if (escaped || moved > this.items.length * 0.45)
       return this.quiet > 0.8

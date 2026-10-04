@@ -1,5 +1,8 @@
 import { localAnchor, worldAnchor, validateTieSpecs } from "./ties.js";
 import { generateJointFillers } from "./joint-fillers.js";
+import { foundationMasonry } from "./foundation-masonry.js";
+import { validateBase, baseSystem } from "./elastic-base.js";
+import { setupElasticBaseControls, drawElasticBase } from "./elastic-base-ui.js";
 import { blockLoads, loadShade } from "./load-colors.js";
 import {
   setupInspector,
@@ -66,6 +69,7 @@ let sim,
   acc = 0,
   last = 0;
 let modelBounds;
+let elasticBase = null, initialBaseState;
 let tieDraft = null,
   initialTies = [];
 let loadValues = new Map(),
@@ -93,6 +97,7 @@ function config() {
     thickness: +$("#thickness").value,
     materialDensity: +$("#density").value,
     bounds: photo ? photoBounds(photo) : modelBounds,
+    elasticBase,
   };
 }
 function renderGroups() {
@@ -209,11 +214,33 @@ $("#loadScale").onchange = () => {
   $("#loadReferenceLabel").hidden = $("#loadScale").value !== "fixed";
 };
 renderGroups();
+const baseControls = setupElasticBaseControls({
+  message,
+  apply: (options) => {
+    const source = sim.time === 0 ? sim.specs() : initial;
+    const ties = sim.time === 0 ? sim.tieSpecs() : initialTies;
+    const footing = foundationMasonry(source, options, config().bounds?.bottom ?? 0);
+    baseSystem(footing.config, +$("#thickness").value);
+    const ids = new Set(footing.particles.map((s) => s.id));
+    rebuild(footing.particles, ties.filter((t) => ids.has(t.a) && ids.has(t.b)), footing.config);
+    $("#clearResults").click();
+    message("Masonry footing and elastic transfer beam applied. Press Play or run collapse analysis.");
+  },
+  remove: () => {
+    const source = sim.time === 0 ? sim.specs() : initial;
+    const wall = source.filter((s) => !s.foundationBlock);
+    const ids = new Set(wall.map((s) => s.id));
+    rebuild(wall, initialTies.filter((t) => ids.has(t.a) && ids.has(t.b)));
+    $("#clearResults").click();
+    message("Footing removed; rigid floor restored at the original level.");
+  },
+});
 const analysis = setupAnalysis({
   scene: () => ({
     specs: sim.time === 0 ? sim.specs() : initial,
     ties: sim.time === 0 ? sim.tieSpecs() : initialTies,
     config: config(),
+    baseState: sim.time === 0 ? sim.base?.snapshot() : initialBaseState,
   }),
   sim: () => sim,
   pause: () => {
@@ -245,9 +272,16 @@ $("#loadAnalysisExample").onclick = () => {
     `${example.name} loaded (open sides, μ = ${EXAMPLE_SETTINGS.friction}). Run the analysis${example.ties.length ? " or Pre / post ties" : ""}.`,
   );
 };
-function rebuild(specs, ties = []) {
+function rebuild(specs, ties = [], support = null, baseState) {
+  elasticBase = support;
+  if (!support) {
+    specs = specs.filter((s) => !s.foundationBlock);
+    const ids = new Set(specs.map((s) => s.id));
+    ties = ties.filter((t) => ids.has(t.a) && ids.has(t.b));
+  }
   sim?.dispose();
   sim = new Simulation(config());
+  sim.base?.restore(baseState);
   specs.forEach((s) => sim.add(s));
   for (const spec of ties)
     sim.addTie(
@@ -258,6 +292,8 @@ function rebuild(specs, ties = []) {
       spec,
     );
   initialTies = sim.tieSpecs();
+  initialBaseState = sim.base?.snapshot();
+  baseControls.sync(elasticBase);
   tieDraft = null;
   initial = sim.specs();
   selected = null;
@@ -289,6 +325,7 @@ function play() {
   if (sim.time === 0) {
     initial = sim.specs();
     initialTies = sim.tieSpecs();
+    initialBaseState = sim.base?.snapshot();
   }
   running = !running;
   drag = null;
@@ -312,6 +349,7 @@ function edited() {
     i.torque = 0;
   }
   initial = sim.specs();
+  initialBaseState = sim.base?.snapshot();
 }
 $("#generate").onclick = () => {
   photo = null;
@@ -329,7 +367,7 @@ $("#generate").onclick = () => {
 };
 $("#clear").onclick = () => rebuild([]);
 $("#play").onclick = play;
-$("#reset").onclick = () => rebuild(initial, initialTies);
+$("#reset").onclick = () => rebuild(initial, initialTies, elasticBase, initialBaseState);
 $("#step").onclick = () => {
   if (draft.length || tieDraft) {
     message("Finish or cancel the outline / tie first.");
@@ -338,6 +376,7 @@ $("#step").onclick = () => {
   if (sim.time === 0) {
     initial = sim.specs();
     initialTies = sim.tieSpecs();
+    initialBaseState = sim.base?.snapshot();
   }
   running = false;
   updatePlay();
@@ -555,8 +594,10 @@ $("#size").oninput = () =>
 $("#threshold").oninput = () =>
   ($("#thresholdValue").textContent = $("#threshold").value + "% of maximum");
 function updateCamera() {
-  if (photo || modelBounds) {
-    const b = photo ? photoBounds(photo) : modelBounds,
+  if (photo || modelBounds || elasticBase) {
+    const original = photo ? photoBounds(photo) : modelBounds ?? { left: 1, right: 11, bottom: 0, top: 8 };
+    const b = elasticBase ? { ...original, left: Math.min(original.left, elasticBase.left),
+      right: Math.max(original.right, elasticBase.right), bottom: Math.min(original.bottom, elasticBase.top - elasticBase.depth - .7) } : original,
       w = b.right - b.left,
       h = b.top - b.bottom;
     scale = Math.min(W / (w + 0.8), H / (h + 0.8));
@@ -709,7 +750,13 @@ for (const id of ["thickness", "density"])
       $("#density").value = sim.config.materialDensity;
       return;
     }
-    sim.configure(config());
+    try {
+      sim.configure(config());
+    } catch (error) {
+      message(error.message);
+      $("#thickness").value = sim.config.thickness;
+      $("#density").value = sim.config.materialDensity;
+    }
   };
 function finishTrace() {
   if (running) return;
@@ -1113,6 +1160,8 @@ $("#export").onclick = () => {
           initial,
           ties: sim.tieSpecs(),
           initialTies,
+          baseState: sim.base?.snapshot(),
+          initialBaseState,
           photo: photo?.data,
           view: {
             blockColorMode: $("#blockColorMode").value,
@@ -1196,6 +1245,7 @@ $("#import").onchange = async (e) => {
               "traced-block",
               "ground-connector",
             ].includes(p.role)) ||
+          (p.foundationBlock !== undefined && typeof p.foundationBlock !== "boolean") ||
           (p.shape === "rectangle" &&
             (![p.width, p.height].every(Number.isFinite) ||
               p.width <= 0 ||
@@ -1248,6 +1298,13 @@ $("#import").onchange = async (e) => {
     )
       throw Error("Unknown block group");
     validateTieSpecs(data.ties ?? [], data.particles);
+    const importedBase = validateBase(data.config.elasticBase);
+    if (importedBase) {
+      baseSystem(importedBase, data.config.thickness ?? 1);
+      if (data.baseState !== undefined && (!Array.isArray(data.baseState) || data.baseState.length !== importedBase.segments ||
+        data.baseState.some((s) => !Number.isFinite(s.y) || !Number.isFinite(s.vy) || Math.abs(s.y) > 200 || Math.abs(s.vy) > 1000)))
+        throw Error("Invalid elastic foundation state.");
+    }
     const importedPhoto = data.photo ? await restorePhoto(data.photo) : null;
     if (token !== photoLoadToken) return;
     groups = importedGroups;
@@ -1280,7 +1337,7 @@ $("#import").onchange = async (e) => {
           ? data.view.loadReference
           : 150;
     }
-    rebuild(data.particles, data.ties ?? []);
+    rebuild(data.particles, data.ties ?? [], importedBase, data.baseState);
     $("#mu").dispatchEvent(new Event("input"));
     message("Experiment imported.");
   } catch (error) {
@@ -1466,6 +1523,7 @@ function draw() {
       s.halfExtents.y * 2 * scale,
     );
   }
+  drawElasticBase(ctx, sim.base, screen, scale);
   if ($("#initial").checked)
     initial.forEach((s) => particle(s, s, s.angle, true));
   for (const i of sim.items)

@@ -60,6 +60,7 @@ export function equilibriumReport(sim) {
 function build(state, config) {
   const sim = new Simulation(config);
   for (const s of state.specs) sim.add(s);
+  sim.base?.restore(state.baseState);
   for (const t of state.ties)
     sim.addTie(
       sim.items.find((i) => i.id === t.a),
@@ -70,7 +71,7 @@ function build(state, config) {
     );
   return sim;
 }
-const snapshot = (sim) => ({ specs: sim.specs(), ties: sim.tieSpecs() });
+const snapshot = (sim) => ({ specs: sim.specs(), ties: sim.tieSpecs(), baseState: sim.base?.snapshot() });
 
 function displacement(sim, reference) {
   let max = 0;
@@ -110,7 +111,7 @@ async function settle(
     if (displacement(sim, anchor) > tolerance) {
       anchor = sim.specs();
       since = k;
-    } else if (k - since >= window) {
+    } else if (k - since >= window && (!sim.base || sim.base.report().speed < tolerance/rest)) {
       atRest = true;
       break;
     }
@@ -173,7 +174,7 @@ export async function collapseAnalysis(
     // Traced or detected blocks rarely touch exactly: settling is tolerated
     // up to two median block sizes, provided the assembly comes to rest and
     // no block leaves through the floor. λ is measured from the settled state.
-    const bottom = scene.config.bounds?.bottom ?? 0;
+    const bottom = scene.config.elasticBase?.top ?? scene.config.bounds?.bottom ?? 0;
     const self = await settle(sim, scene.specs, {
       ...options,
       hold: Math.max(hold, 8),

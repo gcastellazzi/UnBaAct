@@ -1,0 +1,67 @@
+import { chromium } from "@playwright/test";
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+const browser = await chromium.launch();
+try {
+  const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+  const errors = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  await page.goto("http://127.0.0.1:5173");
+  await page.waitForFunction(() => document.body.dataset.ready === "true");
+  await page.click("#tab-button-analysis");
+  await page.selectOption("#analysisExample", "arch-free");
+  await page.click("#loadAnalysisExample");
+  await page.waitForFunction(() => +document.querySelector("#particles").textContent === 13);
+  const original = +(await page.locator("#particles").textContent());
+  await page.locator("#baseTools summary").click();
+  await page.selectOption("#base-pattern", "irregular-stone");
+  await page.selectOption("#base-model", "pasternak");
+  await page.click("#applyBase");
+  assert.ok((await page.locator("#baseStatus").textContent()).includes("Pasternak active"), await page.locator("#baseStatus").textContent());
+  await page.waitForFunction((n) => +document.querySelector("#particles").textContent > n, original);
+  assert.ok((await page.locator("#baseStatus").textContent()).includes("Pasternak active"));
+  const withFooting = +(await page.locator("#particles").textContent());
+  await page.click("#applyBase");
+  assert.equal(+(await page.locator("#particles").textContent()), withFooting);
+  await page.selectOption("#analysisType", "coupled");
+  await page.click("#play");
+  await page.waitForFunction(() => parseFloat(document.querySelector("#time").textContent.slice(4)) > 3);
+  await page.click("#play");
+  await page.waitForTimeout(300);
+  assert.ok((await page.locator("#coupledReport").textContent()).includes("Soil reaction"));
+  await page.locator("#baseTools summary").click();
+  await page.screenshot({ path: join(tmpdir(), "unbaact-elastic-footing.png") });
+  await page.click("#tab-button-observe");
+  const downloaded = page.waitForEvent("download");
+  await page.click("#export");
+  const file = await downloaded;
+  const data = JSON.parse(await readFile(await file.path(), "utf8"));
+  assert.equal(data.config.elasticBase.model, "pasternak");
+  assert.equal(data.baseState.length, 24);
+  assert.equal(data.particles.filter((s) => s.foundationBlock).length, withFooting - original);
+  assert.ok(data.baseState.some((s) => s.y < data.config.elasticBase.top - data.config.elasticBase.depth/2));
+  await page.click("#clear");
+  await page.locator("#import").setInputFiles({ name: "footing.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(data)) });
+  await page.waitForFunction((n) => +document.querySelector("#particles").textContent === n, withFooting);
+  await page.click("#tab-button-analysis");
+  await page.selectOption("#analysisType", "coupled");
+  await page.waitForTimeout(300);
+  assert.ok((await page.locator("#coupledReport").textContent()).includes("pasternak"));
+  await page.click("#reset");
+  assert.equal(+(await page.locator("#particles").textContent()), withFooting);
+  for (const [width, height] of [[1280, 800], [390, 844]]) {
+    await page.setViewportSize({ width, height });
+    await page.waitForTimeout(100);
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+  }
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.locator("#baseTools summary").click();
+  await page.click("#removeBase");
+  await page.waitForFunction((n) => +document.querySelector("#particles").textContent === n, original);
+  assert.equal(await page.locator("#baseStatus").textContent(), "Rigid floor active.");
+  assert.deepEqual(errors, []);
+  console.log("Coupled footing: generation, replacement, playback, plots, export/import, reset and removal passed.");
+} finally { await browser.close(); }

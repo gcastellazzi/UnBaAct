@@ -118,7 +118,7 @@ function context(canvas) {
 function number(v) {
   return v === 0 ? "0" : Math.abs(v) < .01 || Math.abs(v) >= 10000 ? v.toExponential(1) : Number(v.toPrecision(3)).toString();
 }
-function drawDiagram(canvas, result, key, unit, color) {
+export function drawDiagram(canvas, result, key, unit, color) {
   const { ctx, w, h } = context(canvas);
   if (!result || w < 80) return;
   const samples = result.samples;

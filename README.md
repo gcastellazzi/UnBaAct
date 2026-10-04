@@ -123,6 +123,66 @@ In the arcade, chains are ineffective against a horizontal sway, where both spri
 
 These are numerical estimates from rigid-block dynamics with quasi-static load steps; they depend on friction, contact tolerances and the displacement limit, and are not a certified structural assessment.
 
+## Block masonry on a flexible footing
+
+Load any block wall or analysis example, then open **Build → Foundation &
+elastic soil**. Choose staggered bricks, regular stones, irregular stones, or
+no masonry (wall directly on the transfer beam). Set courses, course height,
+block width and footing overhang, then **Apply / replace foundation**. Courses
+are inserted below the original floor level; wall geometry and wall-to-wall
+ties retain their positions. Applying again replaces the previous generated
+footing from the trial's initial configuration. Irregular stone widths and
+faceted outlines follow the scene's random seed. Footing blocks are independent
+dynamic bodies with the scene's material density, thickness and friction
+groups, so their contacts can slide and open.
+
+The rigid floor is replaced by a continuous-in-stiffness, discretised vertical
+transfer beam on Winkler or Pasternak soil. Masonry acts on its collision
+strips through the same frictional contact solver as other blocks. Equal and
+opposite contact impulses load the strips; their displacement changes the
+support of the blocks at the next substep. The footing is therefore coupled to
+the wall during playback and collapse analysis, rather than calculated from a
+fixed assumed pressure distribution. The transfer beam has its own EI, depth
+and density; its thickness is the scene thickness. Its mass and self-weight
+are included. Horizontal strip translations and strip rotations are restrained;
+only vertical bending/settlement is represented.
+
+With strip spacing `h`, displacements `w`, soil line coefficients `kt`, `Gt`,
+the discrete elastic energy is
+
+`U = ½ Σ kt h w_i² + ½ Σ (Gt/h)(w_(i+1)−w_i)² + ½ Σ (EI/h³)(w_(i+1)−2w_i+w_(i−1))²`.
+
+Interior first/second differences give the Pasternak coupling and beam bending,
+with free bending ends. The collision surface is piecewise horizontal, and the
+model assumes small slopes. Check convergence with the strip count. Soil
+springs are bilateral: uplift/tension is reported, not suppressed. This model
+does not add soil plasticity or transfer-beam cracking. Ground dashpots use
+`c = 2 ζ √(m kt h)` for each strip; damping affects the settling transient.
+The physical outer timestep remains 1/120 s. Explicit elastic forces use an
+adaptive number of smaller contact/dynamics steps based on a stiffness-matrix
+frequency bound; settings requiring over 128 substeps are rejected with an
+explanation. Contact and tie impulses are accumulated into mean forces over
+the outer timestep. Beam self-weight is permanent; multiplier patterns act on
+the masonry blocks, including footing blocks.
+
+**Analysis → Block wall · elastic footing** displays live settlement and soil
+reaction diagrams below the scene, including the transfer beam's self-weight
+in the total soil reaction. Plot `x` is measured from the footing's left edge.
+**Rigid-block mechanisms · collapse** and **Pre / post ties** automatically
+use the active support, preserving its deformed state when restarting a
+bisection trial. **Reset** retains the foundation setup. JSON export/import
+preserves parameters, footing block tags and the current transfer-beam state;
+as before, import starts a new trial from the exported block geometry.
+**Remove footing · rigid floor** removes generated footing blocks and restores
+the original floor. Loading a different example or recalibrating a photo
+starts a scene without the previous footing; apply a new footing afterward.
+
+`tests/elastic-base.test.js` verifies uniform self-weight settlement, load
+transfer and recovery after unloading, force balance, stiffness-dependent load
+spreading, ties on a moving support, generated masonry, state restoration and
+collapse analysis. Run `node scripts/elastic-base-browser-check.mjs` with the
+dev server to exercise generation, replacement, plots, persistence and removal.
+
 ## Wall on elastic foundation
 
 In **Analysis → Analysis type → Wall on elastic foundation**, set the wall

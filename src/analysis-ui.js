@@ -6,6 +6,7 @@ import {
   equilibriumReport,
 } from "./collapse.js";
 import { ANALYSIS_EXAMPLES } from "./analysis-examples.js";
+import { baseSupportReport } from "./elastic-base.js";
 import { foundationHTML, setupFoundation, drawDiagram } from "./foundation-ui.js";
 
 const $ = (s) => document.querySelector(s);
@@ -327,12 +328,13 @@ export function setupAnalysis({ scene, sim, pause, message }) {
   function drawCoupled() {
     if ($("#coupledGraphs").closest("[hidden]")) return;
     const s = sim(), base = s?.base;
-    const r = base?.report();
+    const r = baseSupportReport(s);
     const chart = base ? { parameters: { length: base.p.right - base.p.left },
+      rigidRegions: base.rigid.map((p) => ({ left: p.left - base.p.left, right: p.right - base.p.left })),
       samples: r.samples.map((p) => ({ ...p, x: p.x - base.p.left })) } : null;
     drawDiagram($("#coupledSettlement"), chart, "w", 1000, "#1c769c");
     drawDiagram($("#coupledReaction"), chart, "reaction", .001, "#4d7d3a");
-    $("#coupledReport").innerHTML = base ? `<dl><dt>Model</dt><dd>${base.p.model}</dd><dt>Footing blocks</dt><dd>${s.items.filter((i) => i.foundationBlock).length}</dd><dt>Max settlement</dt><dd>${fmt(r.maxSettlement*1000)} mm</dd><dt>Soil reaction</dt><dd>${fmt(r.soilReaction/1000)} kN</dd><dt>Transfer beam weight</dt><dd>${fmt(r.mass*s.config.gravity/1000)} kN</dd></dl>${r.minSettlement < -1e-6 || r.samples.some((p) => p.reaction < -1) ? '<p class="hint">Soil tension/uplift present in the bilateral model.</p>' : ''}` : '<p class="hint">Rigid floor active. Add an elastic footing in Build.</p>';
+    $("#coupledReport").innerHTML = base ? `<dl><dt>Model / elastic region</dt><dd>${base.p.model} / ${base.p.zone}</dd><dt>Elastic span</dt><dd>${fmt(r.elasticRight-r.elasticLeft)} m (${pct(r.elasticFraction)})</dd><dt>Footing blocks</dt><dd>${s.items.filter((i) => i.foundationBlock).length}</dd><dt>Max settlement</dt><dd>${fmt(r.maxSettlement*1000)} mm</dd><dt>Elastic soil reaction</dt><dd>${fmt(r.soilReaction/1000)} kN</dd><dt>Rigid base reaction ↑</dt><dd>${fmt(r.rigidReaction.y/1000)} kN</dd><dt>Total base reaction ↑</dt><dd>${fmt(r.totalVertical/1000)} kN</dd><dt>Transfer beam weight</dt><dd>${fmt(r.mass*s.config.gravity/1000)} kN</dd></dl>${base.rigid.length ? '<p class="hint">Gray chart regions are rigid. Compare rigid reactions and block contacts to observe load transfer across the settling region. The flexible layer ends freely at each interface.</p>' : ''}${r.minSettlement < -1e-6 || r.samples.some((p) => p.reaction < -1) ? '<p class="hint">Soil tension/uplift present in the bilateral model.</p>' : ''}` : '<p class="hint">Rigid floor active. Add an elastic footing in Build.</p>';
   }
   function updateReport(now) {
     if (now - lastReport < 250) return;

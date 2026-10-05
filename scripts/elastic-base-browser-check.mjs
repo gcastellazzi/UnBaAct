@@ -31,7 +31,7 @@ try {
   await page.waitForFunction(() => parseFloat(document.querySelector("#time").textContent.slice(4)) > 3);
   await page.click("#play");
   await page.waitForTimeout(300);
-  assert.ok((await page.locator("#coupledReport").textContent()).includes("Soil reaction"));
+  assert.ok((await page.locator("#coupledReport").textContent()).includes("Elastic soil reaction"));
   await page.locator("#baseTools summary").click();
   await page.screenshot({ path: join(tmpdir(), "unbaact-elastic-footing.png") });
   await page.click("#tab-button-observe");

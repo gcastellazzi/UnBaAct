@@ -1,7 +1,8 @@
 import test, { before } from "node:test";
 import assert from "node:assert/strict";
 import { initialize, Simulation } from "../src/physics.js";
-import { BASE_DEFAULTS, baseSystem } from "../src/elastic-base.js";
+import { BASE_DEFAULTS, baseSystem, baseSupportReport } from "../src/elastic-base.js";
+import { settlementExample } from "../src/settlement-examples.js";
 import { foundationMasonry, blockBounds } from "../src/foundation-masonry.js";
 import { equilibriumReport, collapseAnalysis } from "../src/collapse.js";
 before(initialize);
@@ -119,4 +120,71 @@ test("Collapse analysis accepts a wall with masonry footing on elastic soil", as
     { lambdaMax: .05, steps: 2, bisections: 1 });
   assert.ok(r.selfWeight.stable, r.reason);
   assert.ok(r.selfWeight.report.globalError < .03);
+});
+
+test("Local elastic regions leave real rigid supports and balance both load paths", () => {
+  for (const model of ["winkler", "pasternak"]) for (const zone of ["center", "left", "right"]) {
+    const s = new Simulation(config({ zone, zoneFraction: .4, model, k: 1e5, EI: 1000 }));
+    try {
+      const elastic = s.add({ shape: "rectangle", width: .4, height: .4,
+        x: (s.base.left+s.base.right)/2, y: .205 });
+      const patch = s.base.rigid[0];
+      const rigid = s.add({ shape: "rectangle", width: .4, height: .4,
+        x: (patch.left+patch.right)/2, y: .205 });
+      settle(s, 1400);
+      const r = baseSupportReport(s), weight = (elastic.body.mass()+rigid.body.mass()+r.mass)*9.81;
+      assert.ok(Math.abs(r.totalVertical/weight-1) < .025, `${model}/${zone}: ${r.totalVertical}/${weight}`);
+      assert.ok(Math.abs(r.rigidReaction.y/(rigid.body.mass()*9.81)-1) < .025);
+      assert.ok(elastic.body.translation().y < .18);
+      assert.ok(Math.abs(rigid.body.translation().y-.2) < .004);
+      assert.ok(equilibriumReport(s).globalError < .025);
+      assert.equal(s.walls.filter((w) => w.label.startsWith("Rigid base")).length, zone === "center" ? 2 : 1);
+      // No clamping/connection to rigid patches: unloaded free layer remains
+      // able to settle at the ends as well as at its middle.
+      assert.ok(r.samples.every((p) => p.w > .01));
+    } finally { s.dispose(); }
+  }
+});
+
+test("Local support snapshots survive boundary changes but not relocation", () => {
+  const s = new Simulation(config({ zone: "left", zoneFraction: .4 }));
+  try {
+    settle(s, 300);
+    const snapshot = s.base.snapshot();
+    assert.ok(snapshot.length < s.config.elasticBase.segments);
+    s.configure({ boundary: "cup" });
+    assert.deepEqual(s.base.snapshot(), snapshot);
+    s.configure({ elasticBase: { ...s.config.elasticBase, zone: "right" } });
+    assert.ok(s.base.snapshot().every((p) => Math.abs(p.y-s.base.referenceY) < 1e-7 && p.vy === 0));
+    s.base.restore(snapshot);
+    assert.deepEqual(s.base.snapshot(), snapshot);
+    assert.throws(() => baseSystem({ ...s.config.elasticBase, zone: "unknown" }, .3));
+    assert.throws(() => baseSystem({ ...s.config.elasticBase, zoneFraction: 0 }, .3));
+  } finally { s.dispose(); }
+});
+
+test("Settlement specimens have reproducible geometry and a common envelope", () => {
+  for (const bond of ["staggered", "stacked", "irregular"]) {
+    const a = settlementExample(bond);
+    assert.deepEqual(a, settlementExample(bond));
+    assert.ok(a.particles.length >= 48);
+    assert.ok(a.particles.every((s) => !s.foundationBlock && blockBounds(s).bottom >= 0));
+    assert.ok(Math.abs(Math.min(...a.particles.map((s) => blockBounds(s).left))-2.8005) < .001);
+    assert.ok(Math.abs(Math.max(...a.particles.map((s) => blockBounds(s).right))-9.1995) < .001);
+  }
+});
+
+test("Ties project onto rigid portions only in a local settlement scene", () => {
+  const s = new Simulation(config({ zone: "center", k: 1e5, EI: 1000 }));
+  try {
+    const a = s.add({ shape: "rectangle", width: .3, height: .4, x: 3.3, y: .205 });
+    const b = s.add({ shape: "rectangle", width: .3, height: .4, x: 5, y: .205 });
+    s.addTie(a, b, undefined, undefined, { anchorA: { x: 0, y: 0 }, anchorB: { x: 0, y: 0 }, length: 1.7, tension: true });
+    const constraints = s.tieBoundaryConstraints();
+    assert.ok(constraints.some((c) => c.item === a && c.label === "Rigid base left"));
+    assert.ok(!constraints.some((c) => c.item === b && c.normal.y === 1));
+    settle(s, 1000);
+    assert.ok(b.body.translation().y < .19);
+    assert.ok(a.body.translation().y > .195);
+  } finally { s.dispose(); }
 });

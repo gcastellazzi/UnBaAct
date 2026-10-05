@@ -8,19 +8,22 @@ export const BASE_DEFAULTS = Object.freeze({
   model: "winkler", pattern: "bricks", rows: 2, course: .25, blockWidth: .65,
   margin: .4, k: 2e6, shear: 1e5, EI: 10000, depth: .15,
   density: 2400, damping: .7, segments: 24, seed: 42,
+  zone: "full", zoneFraction: .4,
 });
 
 export function validateBase(input) {
   if (input == null) return null;
   const p = { ...BASE_DEFAULTS, ...input };
   if (!["winkler", "pasternak"].includes(p.model) ||
-      !["bricks", "regular-stone", "irregular-stone", "none"].includes(p.pattern))
+      !["bricks", "regular-stone", "irregular-stone", "none"].includes(p.pattern) ||
+      !["full", "center", "left", "right"].includes(p.zone))
     throw Error("Invalid elastic foundation model or masonry pattern.");
   for (const [key, min, max] of [
     ["rows", 1, 6], ["course", .05, 1], ["blockWidth", .1, 2], ["margin", 0, 3],
     ["k", 100, 1e10], ["shear", 0, 1e10], ["EI", .01, 1e10],
     ["depth", .02, 1], ["density", 1, 30000], ["damping", 0, 2],
     ["segments", 6, 60], ["seed", 0, 4294967295],
+    ["zoneFraction", .1, .9],
     ["left", -100, 100], ["right", -100, 100], ["top", -100, 100],
   ]) {
     if (!Number.isFinite(p[key]) || p[key] < min || p[key] > max)
@@ -31,8 +34,23 @@ export function validateBase(input) {
   return p;
 }
 
+export function baseLayout(p) {
+  const h = (p.right - p.left)/p.segments;
+  // Retain the full-span mesh spacing; a shorter patch must not silently
+  // multiply stiffness by squeezing the same number of strips into it.
+  const n = p.zone === "full" ? p.segments : Math.max(3, Math.min(p.segments - 1, Math.round(p.segments*p.zoneFraction)));
+  const span = n*h;
+  const left = p.zone === "right" ? p.right - span : p.zone === "center" ? (p.left + p.right - span)/2 : p.left;
+  const right = left + span;
+  const rigid = [];
+  if (left > p.left + 1e-9) rigid.push({ left: p.left, right: left, label: "Rigid base left" });
+  if (right < p.right - 1e-9) rigid.push({ left: right, right: p.right, label: "Rigid base right" });
+  return { n, h, left, right, rigid };
+}
+
 export function baseSystem(input, thickness, dt = 1/120) {
-  const p = validateBase(input), n = p.segments, h = (p.right - p.left)/n;
+  const p = validateBase(input), layout = baseLayout(p);
+  const { n, h } = layout;
   if (!(Number.isFinite(thickness) && thickness > 0)) throw Error("Invalid foundation thickness.");
   const mass = p.density*thickness*p.depth*h, spring = p.k*thickness*h;
   const shear = p.model === "pasternak" ? p.shear*thickness/h : 0;
@@ -50,7 +68,7 @@ export function baseSystem(input, thickness, dt = 1/120) {
   const substeps = Math.max(1, Math.ceil(dt*Math.max(omega, damping/mass)/.35));
   if (substeps > 128)
     throw Error("Foundation too stiff for this mesh: reduce segments or stiffness, or increase transfer-layer depth.");
-  return { p, n, h, mass, spring, shear, K, damping, substeps };
+  return { p, ...layout, mass, spring, shear, K, damping, substeps };
 }
 
 export class ElasticBase {
@@ -59,7 +77,7 @@ export class ElasticBase {
     this.world = world;
     this.referenceY = this.p.top - this.p.depth/2;
     this.strips = Array.from({ length: this.n }, (_, i) => {
-      const x = this.p.left + (i + .5)*this.h;
+      const x = this.left + (i + .5)*this.h;
       const body = world.createRigidBody(RAPIER.RigidBodyDesc.dynamic()
         .setTranslation(x, this.referenceY).enabledTranslations(false, true)
         .lockRotations().setCanSleep(false).setCcdEnabled(true));
@@ -105,4 +123,19 @@ export class ElasticBase {
   dispose() {
     for (const s of this.strips) this.world.removeRigidBody(s.body);
   }
+}
+
+// Separate the masonry-to-rigid contact reactions from the elastic soil.
+// Their sum balances masonry + moving-layer weight at rest (open sides).
+export function baseSupportReport(sim) {
+  if (!sim.base) return null;
+  const beam = sim.base.report();
+  const rigid = { x: 0, y: 0 };
+  for (const c of sim.contacts) if (!c.b && c.wall?.startsWith("Rigid base")) {
+    rigid.x += -c.normal.x*c.fn + c.normal.y*c.ft;
+    rigid.y += -c.normal.y*c.fn - c.normal.x*c.ft;
+  }
+  return { ...beam, rigidReaction: rigid, totalVertical: beam.soilReaction + rigid.y,
+    elasticLeft: sim.base.left, elasticRight: sim.base.right,
+    elasticFraction: (sim.base.right - sim.base.left)/(sim.base.p.right - sim.base.p.left) };
 }

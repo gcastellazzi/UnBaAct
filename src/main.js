@@ -1,6 +1,7 @@
 import { localAnchor, worldAnchor, validateTieSpecs } from "./ties.js";
 import { generateJointFillers } from "./joint-fillers.js";
 import { foundationMasonry } from "./foundation-masonry.js";
+import { settlementExample } from "./settlement-examples.js";
 import { validateBase, baseSystem } from "./elastic-base.js";
 import { setupElasticBaseControls, drawElasticBase } from "./elastic-base-ui.js";
 import { blockLoads, loadShade } from "./load-colors.js";
@@ -11,6 +12,7 @@ import {
 } from "./inspector.js";
 import { contourSpec, decomposePolygon } from "./geometry.js";
 import { importALoTiA } from "./alotia-import.js";
+import { setupAbaqusExport } from "./abaqus-ui.js";
 import {
   loadLocalPhoto,
   restorePhoto,
@@ -271,6 +273,26 @@ $("#loadAnalysisExample").onclick = () => {
   message(
     `${example.name} loaded (open sides, μ = ${EXAMPLE_SETTINGS.friction}). Run the analysis${example.ties.length ? " or Pre / post ties" : ""}.`,
   );
+};
+$("#loadSettlementExample").onclick = () => {
+  const zone = $("#base-zone").value;
+  const example = settlementExample($("#settlementBond").value, zone === "full" ? "center" : zone);
+  photo = null; ++photoLoadToken; modelBounds = example.config.bounds;
+  $("#blockOpacity").value = 100; syncPhotoControls();
+  $("#boundary").value = "free";
+  $("#gravity").value = example.config.gravity;
+  $("#thickness").value = example.config.thickness;
+  $("#density").value = example.config.materialDensity;
+  $("#mu").value = example.config.friction;
+  for (const group of groups) group.friction = example.config.friction;
+  renderGroups();
+  rebuild(example.particles, [], example.config.elasticBase);
+  $("#clearResults").click();
+  $("#tool").value = "select";
+  $("#tab-button-analysis").click();
+  $("#analysisType").value = "coupled";
+  $("#analysisType").dispatchEvent(new Event("change"));
+  message("Settlement wall loaded. Press Play; compare joint patterns and rigid support reactions.");
 };
 function rebuild(specs, ties = [], support = null, baseState) {
   elasticBase = support;
@@ -1149,6 +1171,18 @@ window.onkeydown = (e) => {
     edited();
   }
 };
+setupAbaqusExport((geometry) => {
+  // Read the whole scene synchronously: all leaves share this exact snapshot.
+  const current = geometry === 'current';
+  const particles = (current ? sim.specs() : initial).map(s => {
+    const item = sim.items.find(i => i.id === s.id);
+    return { ...s, mass: item?.body.mass(),
+      ...(current ? { actionForce: item?.actionForce } : {}) };
+  });
+  return { config: config(), particles,
+    ties: current ? sim.tieSpecs() : initialTies,
+    baseState: current ? sim.base?.snapshot() : initialBaseState };
+}, message);
 $("#export").onclick = () => {
   const blob = new Blob(
     [
@@ -1300,8 +1334,8 @@ $("#import").onchange = async (e) => {
     validateTieSpecs(data.ties ?? [], data.particles);
     const importedBase = validateBase(data.config.elasticBase);
     if (importedBase) {
-      baseSystem(importedBase, data.config.thickness ?? 1);
-      if (data.baseState !== undefined && (!Array.isArray(data.baseState) || data.baseState.length !== importedBase.segments ||
+      const importedSystem = baseSystem(importedBase, data.config.thickness ?? 1);
+      if (data.baseState !== undefined && (!Array.isArray(data.baseState) || data.baseState.length !== importedSystem.n ||
         data.baseState.some((s) => !Number.isFinite(s.y) || !Number.isFinite(s.vy) || Math.abs(s.y) > 200 || Math.abs(s.vy) > 1000)))
         throw Error("Invalid elastic foundation state.");
     }

@@ -129,6 +129,16 @@ export function drawDiagram(canvas, result, key, unit, color) {
   const pad = { l: 65, r: 18, t: 16, b: 34 };
   const X = (x) => pad.l + x/result.parameters.length*(w - pad.l - pad.r);
   const Y = (y) => h - pad.b - (y - lo)/(hi - lo)*(h - pad.t - pad.b);
+  for (const region of result.rigidRegions ?? []) {
+    ctx.fillStyle = "#e5eae6";
+    ctx.fillRect(X(region.left), pad.t, X(region.right)-X(region.left), h-pad.t-pad.b);
+    ctx.fillStyle = "#5d6f6a"; ctx.textAlign = "center";
+    ctx.fillText("rigid", X((region.left+region.right)/2), pad.t+12);
+    if (key === "w") {
+      ctx.strokeStyle = "#71827b"; ctx.beginPath();
+      ctx.moveTo(X(region.left), Y(0)); ctx.lineTo(X(region.right), Y(0)); ctx.stroke();
+    }
+  }
   ctx.lineWidth = 1;
   for (let i = 0; i <= 4; i++) {
     const v = lo + (hi - lo)*i/4, x = result.parameters.length*i/4;

@@ -183,6 +183,43 @@ spreading, ties on a moving support, generated masonry, state restoration and
 collapse analysis. Run `node scripts/elastic-base-browser-check.mjs` with the
 dev server to exercise generation, replacement, plots, persistence and removal.
 
+### Local settlement: central and lateral elastic regions
+
+In **Build → Foundation & elastic soil → Elastic region**, choose the full
+foundation, a central region, or the left/right region. Outside a local elastic
+region the wall or footing rests on rigid supports at the original support
+elevation. Set **Elastic region width (%)** and apply the foundation. Width is
+rounded to the full-span mesh spacing, with at least three elastic strips;
+the status and analysis inspector show the actual span. Existing full-span
+projects retain their behavior when the new settings are absent.
+
+The flexible transfer layer exists only in the selected region and has free
+bending ends. It does not bridge into the rigid supports. Masonry therefore
+redistributes loads across the rigid/elastic interface through its contacts;
+the rigid supports are not approximated by very stiff springs. Soil springs
+remain bilateral. This is settlement under gravity on locally compliant soil,
+not an imposed downward motion of the ground.
+
+**Settlement test wall → Load settlement wall** creates a new 6.4 × 2.4 m wall
+with staggered joints, aligned joints, or irregular stones. It uses open sides,
+thickness 0.3 m, density 1800 kg/m³, friction 0.6, soil k = 500 kN/m³, and a
+40% requested elastic region (41.67% with 24 mesh divisions). The preset uses
+no separate footing courses and a compliant transfer layer (EI = 0.1 kN·m²).
+Select the central/left/right region before loading the comparison wall, then
+press Play. Use the same soil and boundary settings when comparing bonds.
+Irregular geometry changes the retained mass, so compare reactions normalized
+by actual wall weight rather than assuming equal mass.
+
+The coupled-analysis plots shade rigid regions. The report separates elastic
+soil reaction, rigid-base vertical reaction and their sum. At equilibrium with
+open sides, the sum balances wall/footing loads plus the moving transfer-layer
+weight; rigid supports do not contribute a dynamic mass. Inspect contact forces
+and the initial-configuration overlay to examine load transfer and joint opening.
+Very soft lateral support can cause blocks to leave the base and collapse;
+such transient states must not be interpreted as static reaction distributions.
+The local region, mesh and moving-layer state are preserved in JSON and collapse
+trials. `node scripts/settlement-browser-check.mjs` checks the complete UI workflow.
+
 ## Wall on elastic foundation
 
 In **Analysis → Analysis type → Wall on elastic foundation**, set the wall
@@ -247,7 +284,7 @@ Construction supports free placement and rotation rather than a complete Tetris 
 
 ## Verification
 
-`npm test` includes 25 checks covering reproducibility, reaction equal to weight, free fall, zero gravity, network connectivity, mixed shapes, removal, independent boundaries, impulses for different masses, reaction equal to weight plus applied load and overlap-free masonry geometries, empty window openings, independent loadable lintels, outline validation, compound concave contacts, thickness/density mass updates and photo registration under rescaling.
+`npm test` covers reproducibility, reaction equal to weight, free fall, zero gravity, network connectivity, mixed shapes, removal, independent boundaries, impulses for different masses, reaction equal to weight plus applied load and overlap-free masonry geometries, empty window openings, independent loadable lintels, outline validation, compound concave contacts, thickness/density mass updates and photo registration under rescaling.
 
 Optional browser checks, with the local server running:
 
@@ -259,9 +296,23 @@ node scripts/layout-browser-check.mjs
 node scripts/photo-browser-check.mjs
 ```
 
+## Abaqus 3D export
+
+**Observe → Export Abaqus · 3D solids** exports HEX8/WEDGE6 meshes with independent
+leaves, equal or individual thicknesses, loads on all or selected leaves, and a
+seeded percentage of full-depth or two-leaf through stones (diatoni). Rigid-floor
+and side-wall contact uses constrained stiff support objects. Elastic soil,
+localized settlement regions and ties are included. Free 3D motion is the default.
+The total concentrated force is preserved when selecting the loaded leaf.
+
+See [export settings, mechanical mapping and verification](docs/abaqus-export.md).
+These options currently affect Abaqus; the interactive simulator remains 2D.
+
 ## Files
 
 - `src/geometry.js`: outline validation, centroids and concave polygon decomposition.
+- `src/masonry-3d.js`: leaf geometry and deterministic through-stone replacement.
+- `src/abaqus-mesh.js`, `src/abaqus.js`, `src/abaqus-ui.js`: extrusion, Abaqus deck and export controls.
 - `src/alotia-import.js`: validated ALoTiA JSON and Abaqus INP block conversion.
 - `src/photo.js`: local image processing, embedded-photo validation and calibration transforms.
 - `src/physics.js`: rigid bodies, contacts, generation and diagnostics.

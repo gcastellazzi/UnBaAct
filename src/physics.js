@@ -74,6 +74,7 @@ export class Simulation {
   }
   makeWalls() {
     const baseState = this.base?.snapshot();
+    const oldBaseRange = this.base && [this.base.left, this.base.right, this.base.p.top];
     this.base?.dispose();
     this.base = null;
     for (const c of this.walls) this.world.removeCollider(c, true);
@@ -86,6 +87,7 @@ export class Simulation {
       );
       c.label = label;
       this.walls.push(c);
+      return c;
     };
     const {
       left = 1,
@@ -97,7 +99,10 @@ export class Simulation {
       height = top - bottom;
     if (this.config.elasticBase) {
       this.base = new ElasticBase(this.world, this.config.elasticBase, this.config.thickness, this.config.friction);
-      if (baseState?.length === this.base.n) this.base.restore(baseState);
+      for (const patch of this.base.rigid)
+        wall((patch.left + patch.right)/2, this.base.p.top - .2, (patch.right - patch.left)/2, .2, patch.label)
+          .setCollisionGroups(0x00010001);
+      if (baseState?.length === this.base.n && oldBaseRange?.every((v, i) => v === [this.base.left, this.base.right, this.base.p.top][i])) this.base.restore(baseState);
     } else wall((left + right) / 2, bottom - 0.2, width / 2, 0.2, "Floor");
     if (this.config.boundary === "cup") {
       if (this.config.leftWall)
@@ -267,6 +272,12 @@ export class Simulation {
         (q) => q.y - bounds.bottom,
         { x: 0, y: 1 },
         "Floor",
+      );
+      else for (const patch of this.base.rigid) touching(
+        points.filter((q) => q.x >= patch.left && q.x <= patch.right),
+        (q) => q.y - this.base.p.top,
+        { x: 0, y: 1 },
+        patch.label,
       );
       if (this.config.boundary === "cup") {
         const inside = points.filter(

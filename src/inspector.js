@@ -272,6 +272,16 @@ export function drawBlockDiagram(canvas, item, sim) {
       `Tie #${tie.id}`,
     );
   }
+  for (const joint of sim.flexJoints.filter((j) => j.a === item || j.b === item)) {
+    const onA = joint.a === item;
+    arrow(
+      onA ? joint.pointA : joint.pointB,
+      (onA ? 1 : -1) * joint.force.x,
+      (onA ? 1 : -1) * joint.force.y,
+      "#255f72",
+      `Beam joint #${joint.index + 1}`,
+    );
+  }
   const reactions = new Map();
   for (const c of sim.contacts.filter((c) => c.a === item || c.b === item)) {
     const sign = c.a === item ? -1 : 1,
@@ -289,8 +299,19 @@ export function drawBlockDiagram(canvas, item, sim) {
       { x: sign * tie.force.x, y: sign * tie.force.y },
     );
   }
+  for (const joint of sim.flexJoints.filter((j) => j.a === item || j.b === item)) {
+    const onA = joint.a === item;
+    reactions.set(
+      `Beam joint #${joint.index + 1} → block #${onA ? joint.b.id : joint.a.id}`,
+      {
+        x: (onA ? 1 : -1) * joint.force.x,
+        y: (onA ? 1 : -1) * joint.force.y,
+        moment: (onA ? 1 : -1) * joint.moment,
+      },
+    );
+  }
   const heading = document.createElement("strong");
-  heading.textContent = "Contact and tie reactions on this block";
+  heading.textContent = "Contact, tie and beam-joint reactions on this block";
   forceList.append(heading);
   if (!reactions.size) {
     const hint = document.createElement("p");
@@ -302,7 +323,7 @@ export function drawBlockDiagram(canvas, item, sim) {
   }
   for (const [source, r] of reactions) {
     const row = document.createElement("p");
-    row.textContent = `${source}: Rx ${r.x.toFixed(2)} N · Ry ${r.y.toFixed(2)} N · |R| ${Math.hypot(r.x, r.y).toFixed(2)} N`;
+    row.textContent = `${source}: Rx ${r.x.toFixed(2)} N · Ry ${r.y.toFixed(2)} N · |R| ${Math.hypot(r.x, r.y).toFixed(2)} N${Number.isFinite(r.moment) ? ` · M ${r.moment.toFixed(2)} N·m` : ""}`;
     forceList.append(row);
   }
 }

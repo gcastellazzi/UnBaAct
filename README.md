@@ -80,6 +80,16 @@ Choose a pattern under **Masonry examples**, click **Load masonry example**, the
 
 The examples are procedural approximations of the supplied images. They have no mortar, cohesion or three-dimensional masonry core.
 
+### RC ring beam on a cobble wall
+
+**RC ring beam · cobble wall** places eight rigid beam segments above a dry wall. Adjacent segments are connected by axial, shear and rotational penalty springs, providing a deformable beam surrogate. A 30 kN horizontal action acts at the left end. The central field contains smaller rounded cobbles; two edge bands contain larger, more regular stones. Rigid side boundaries stop below the beam and idealise the additional in-plane restraint supplied by transverse return walls at the quoins. They are visible in the boundary-reaction display and should not be mistaken for stiffness calculated from a three-dimensional model.
+
+Loading the example sets thickness to 0.30 m, density to 1800 kg/m³, regular-block friction to 0.70, irregular-block friction to 0.60, and a common 100 kN grayscale reference. Press Play, then compare the beam-joint reactions in **Block**, contact-force paths in **Observe**, and the motion against **Initial configuration**. The internal joint parameters are $k_a=50$ MN/m, $k_s=20$ MN/m and $k_\theta=20$ MN m/rad with 12% critical damping per adjacent pair. The timestep is subdivided automatically from the beam frequencies.
+
+The intended lesson is compatibility: the segmented beam stays comparatively smooth while the contact-dominated cobble fabric rearranges and transfers the action through non-unique paths toward the edge restraints. The result is qualitative. Cobble and beam pieces remain planar rigid bodies; the model omits mortar, RC cracking/yielding, bond or anchors between beam and wall, out-of-plane response and the true stiffness of return walls. It cannot determine whether a real ring beam is adequate or unsafe.
+
+A reproducible interpretation and matched self-weight comparison are given in [`docs/rc-beam-cobble-wall.md`](docs/rc-beam-cobble-wall.md).
+
 ## Equilibrium check and collapse multiplier
 
 The **Analysis** tab of the Inspector quantifies equilibrium and the load margin of the current scene.

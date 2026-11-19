@@ -1,6 +1,6 @@
 // Scalar contact-load indicator, not stress or pressure: half the incident
 // normal-force magnitudes plus weight and externally applied load.
-export function blockLoads(items, contacts, gravity, ties = []) {
+export function blockLoads(items, contacts, gravity, ties = [], flexJoints = []) {
   const loads = new Map(
     items.map((i) => [
       i.id,
@@ -14,6 +14,11 @@ export function blockLoads(items, contacts, gravity, ties = []) {
   for (const tie of ties) {
     const force = Math.hypot(tie.force.x, tie.force.y) / 2;
     for (const i of [tie.a, tie.b])
+      loads.set(i.id, (loads.get(i.id) || 0) + force);
+  }
+  for (const joint of flexJoints) {
+    const force = Math.hypot(joint.force.x, joint.force.y) / 2;
+    for (const i of [joint.a, joint.b])
       loads.set(i.id, (loads.get(i.id) || 0) + force);
   }
   return loads;

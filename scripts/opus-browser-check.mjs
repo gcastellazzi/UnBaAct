@@ -96,7 +96,7 @@ try {
   }
   assert.deepEqual(errors, []);
   console.log(
-    "Masonry browser OK: 10 scenarios, rendering, contacts, Play/reset, polygon import, selection and removal.",
+    `Masonry browser OK: ${OPUS_SCENARIOS.length} scenarios, rendering, contacts, Play/reset, polygon import, selection and removal.`,
   );
 } finally {
   await browser.close();

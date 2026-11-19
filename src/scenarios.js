@@ -119,6 +119,13 @@ export const OPUS_SCENARIOS = [
     description:
       "Rounded irregular dry stones under Fx +85 N and Fy −150 N on an upper stone. The darker load paths are computed from actual contacts. Add joint imperfections or snecks to compare.",
   },
+  {
+    id: "rc-beam-cobble-wall",
+    name: "RC ring beam · cobble wall",
+    source: "RC_ring_beam_cobble_wall",
+    description:
+      "A deformable segmented RC ring beam transfers a 30 kN horizontal end action to a compliant cobble fabric between larger corner stones. Use load shading and contact forces; this is a qualitative compatibility model, not a retrofit design check.",
+  },
 ];
 const LEFT = 1.025,
   RIGHT = 10.975,
@@ -302,6 +309,8 @@ export function generateOpus(id, seed = 42) {
     loaded.load = 150;
     loaded.loadX = 85;
     loaded.role = "loaded-stone";
+  } else if (id === "rc-beam-cobble-wall") {
+    cobbleWallWithBeam(rand, out);
   } else if (id === "load-comparison") {
     for (const [distributed, offset] of [
       [false, 1.075],
@@ -367,6 +376,48 @@ export function generateOpus(id, seed = 42) {
   else if (id === "slender-rubble") slenderRubbleWall(rand, out);
   else throw Error("Unknown OPUS scenario");
   return out;
+}
+
+function cobbleWallWithBeam(rand, out) {
+  const bottom = 0.015, wallTop = 6.48;
+  // Large, fairly regular stones represent the return-wall restraint at the
+  // two quoins. They remain individual dry-jointed blocks.
+  const edgeWidth = 1.34, rows = 8, h = (wallTop - bottom) / rows;
+  for (let row = 0; row < rows; row++) {
+    const y0 = bottom + row * h, y1 = y0 + h;
+    for (const side of ["left", "right"]) {
+      const l = side === "left" ? LEFT : RIGHT - edgeWidth;
+      const r = side === "left" ? LEFT + edgeWidth : RIGHT;
+      const inset = 0.035 + rand() * 0.035;
+      const p = roundCorners(rect((l + r) / 2, (y0 + y1) / 2, r - l, y1 - y0), 0.12);
+      const b = block(p.map((q) => ({
+        x: q.x + (q.x < (l + r) / 2 ? inset : -inset),
+        y: q.y + (q.y < (y0 + y1) / 2 ? inset : -inset),
+      })), ["#8f948e", "#a6aaa2", "#7d8580"][row % 3], bottom, wallTop);
+      if (b) out.push({ ...b, role: "corner-stone" });
+    }
+  }
+  stoneRegion(out, rand, LEFT + edgeWidth + 0.015, RIGHT - edgeWidth - 0.015, bottom, wallTop, true);
+
+  const n = 8, beamBottom = 6.52, beamHeight = 0.5;
+  const length = (RIGHT - LEFT) / n;
+  for (let k = 0; k < n; k++) {
+    const left = LEFT + k * length, right = left + length;
+    const b = block(rect((left + right) / 2, beamBottom + beamHeight / 2, length, beamHeight),
+      "#7d9298", beamBottom, beamBottom + beamHeight);
+    out.push({
+      ...b,
+      role: "rc-beam-segment",
+      beamId: "top-ring-beam",
+      beamIndex: k,
+      beamLength: length * 0.994,
+      beamAxial: 5e7,
+      beamShear: 2e7,
+      beamRotation: 2e7,
+      beamDamping: 0.12,
+      loadX: k === 0 ? 30000 : 0,
+    });
+  }
 }
 
 // Rounded convex stones stay inside their Voronoi cells: no initial overlap.

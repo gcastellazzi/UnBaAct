@@ -2,6 +2,7 @@ import { localAnchor, projectTies } from "./ties.js";
 import { decomposePolygon } from "./geometry.js";
 import RAPIER from "@dimforge/rapier2d-compat";
 import { ElasticBase, baseSystem } from "./elastic-base.js";
+import { flexibleBeamSubsteps, stepFlexibleBeams } from "./flexible-beam.js";
 export async function initialize() {
   await RAPIER.init();
 }
@@ -17,7 +18,7 @@ export function random(seed) {
   };
 }
 export function inferGroup(spec) {
-  return ["brick", "corner-stone", "lintel", "load-spreader"].includes(
+  return ["brick", "corner-stone", "lintel", "load-spreader", "rc-beam-segment"].includes(
     spec.role,
   ) || ["rectangle", "square", "triangle"].includes(spec.shape)
     ? "regular"
@@ -70,6 +71,7 @@ export class Simulation {
     this.quiet = 0;
     this.nextId = 1;
     this.action = null;
+    this.flexJoints = [];
     this.makeWalls();
   }
   makeWalls() {
@@ -94,9 +96,10 @@ export class Simulation {
       right = 11,
       bottom = 0,
       top = 8,
+      sideWallTop = top,
     } = this.config.bounds || {};
     const width = right - left,
-      height = top - bottom;
+      height = Math.max(0, Math.min(top, sideWallTop) - bottom);
     if (this.config.elasticBase) {
       this.base = new ElasticBase(this.world, this.config.elasticBase, this.config.thickness, this.config.friction);
       for (const patch of this.base.rigid)
@@ -106,9 +109,9 @@ export class Simulation {
     } else wall((left + right) / 2, bottom - 0.2, width / 2, 0.2, "Floor");
     if (this.config.boundary === "cup") {
       if (this.config.leftWall)
-        wall(left - 0.2, (bottom + top) / 2, 0.2, height / 2, "Left wall");
+        wall(left - 0.2, bottom + height / 2, 0.2, height / 2, "Left wall");
       if (this.config.rightWall)
-        wall(right + 0.2, (bottom + top) / 2, 0.2, height / 2, "Right wall");
+        wall(right + 0.2, bottom + height / 2, 0.2, height / 2, "Right wall");
     }
     if (this.config.boundary === "supports") {
       if (this.config.leftWall)
@@ -281,7 +284,7 @@ export class Simulation {
       );
       if (this.config.boundary === "cup") {
         const inside = points.filter(
-          (q) => q.y >= bounds.bottom && q.y <= bounds.top,
+          (q) => q.y >= bounds.bottom && q.y <= (bounds.sideWallTop ?? bounds.top),
         );
         if (this.config.leftWall)
           touching(inside, (q) => q.x - bounds.left, { x: 1, y: 0 }, "Left wall");
@@ -390,6 +393,13 @@ export class Simulation {
           "photoId",
           "group",
           "foundationBlock",
+          "beamId",
+          "beamIndex",
+          "beamLength",
+          "beamAxial",
+          "beamShear",
+          "beamRotation",
+          "beamDamping",
         ].map((k) => [k, i[k]]),
       ),
       ...i.body.translation(),
@@ -445,6 +455,7 @@ export class Simulation {
     this.world.removeRigidBody(item.body);
     this.items = this.items.filter((i) => i !== item);
     this.contacts = this.contacts.filter((c) => c.a !== item && c.b !== item);
+    this.flexJoints = this.flexJoints.filter((j) => j.a !== item && j.b !== item);
     this.quiet = 0;
   }
   impulse(deltaV) {
@@ -507,12 +518,23 @@ export class Simulation {
     }));
     for (const tie of this.ties) tie.force = { x: 0, y: 0 };
     this.tieBoundaryContacts.clear();
-    const substeps = this.base?.substeps ?? 1;
+    const substeps = Math.max(this.base?.substeps ?? 1, flexibleBeamSubsteps(this.items, DT));
     const subdt = DT/substeps;
     this.world.timestep = subdt;
     const contactSteps = new Map();
+    const flexSteps = new Map();
     for (let substep = 0; substep < substeps; substep++) {
       this.base?.apply();
+      for (const joint of stepFlexibleBeams(this.items, subdt)) {
+        const key = `${joint.id}:${joint.index}`;
+        const previous = flexSteps.get(key) ?? { ...joint, force: { x: 0, y: 0 }, moment: 0 };
+        previous.pointA = joint.pointA;
+        previous.pointB = joint.pointB;
+        previous.force.x += joint.force.x / substeps;
+        previous.force.y += joint.force.y / substeps;
+        previous.moment += joint.moment / substeps;
+        flexSteps.set(key, previous);
+      }
       projectTies(this.ties, {
         positions: true,
         velocities: true,
@@ -551,6 +573,7 @@ export class Simulation {
       tie.force.y /= substeps;
     }
     this.world.timestep = DT;
+    this.flexJoints = [...flexSteps.values()];
     this.time += DT;
     let speed = 0;
     for (let k = 0; k < this.items.length; k++) {

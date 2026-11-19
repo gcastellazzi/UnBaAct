@@ -442,6 +442,25 @@ $("#loadOpus").onclick = () => {
   }
   if ($("#opus").value === "load-comparison")
     modelBounds = { left: 1, right: 11, bottom: 0, top: 4.5 };
+  if ($("#opus").value === "rc-beam-cobble-wall") {
+    modelBounds = { left: 1, right: 11, bottom: 0, top: 8, sideWallTop: 6.5 };
+    $("#boundary").value = "cup";
+    $("#leftWall").checked = true;
+    $("#rightWall").checked = true;
+    $("#thickness").value = 0.3;
+    $("#density").value = 1800;
+    $("#mu").value = 0.65;
+    groups = defaultGroups(0.65);
+    groups[0].friction = 0.7;
+    groups[1].friction = 0.6;
+    renderGroups();
+    $("#blockColorMode").value = "load";
+    $("#blockColorMode").dispatchEvent(new Event("change"));
+    $("#loadScale").value = "fixed";
+    $("#loadScale").dispatchEvent(new Event("change"));
+    $("#loadReference").value = 100000;
+    $("#initial").checked = true;
+  }
   rebuild(generateOpus($("#opus").value, +$("#seed").value));
   $("#tool").value = "select";
   message("Example loaded. Press Play to test stability.");
@@ -1239,7 +1258,11 @@ $("#import").onchange = async (e) => {
             Math.abs(data.config.bounds[k]) <= 200,
         ) ||
           data.config.bounds.right <= data.config.bounds.left ||
-          data.config.bounds.top <= data.config.bounds.bottom)) ||
+          data.config.bounds.top <= data.config.bounds.bottom ||
+          (data.config.bounds.sideWallTop !== undefined &&
+            (!Number.isFinite(data.config.bounds.sideWallTop) ||
+              data.config.bounds.sideWallTop <= data.config.bounds.bottom ||
+              data.config.bounds.sideWallTop > data.config.bounds.top)))) ||
       (data.config.thickness !== undefined &&
         (!Number.isFinite(data.config.thickness) ||
           data.config.thickness < 0.01 ||
@@ -1278,7 +1301,17 @@ $("#import").onchange = async (e) => {
               "loaded-stone",
               "traced-block",
               "ground-connector",
+              "rc-beam-segment",
             ].includes(p.role)) ||
+          (p.role === "rc-beam-segment" &&
+            (!Number.isInteger(p.beamIndex) || p.beamIndex < 0 || p.beamIndex > 100 ||
+              typeof p.beamId !== "string" || !p.beamId || p.beamId.length > 80 ||
+              ![p.beamLength, p.beamAxial, p.beamShear, p.beamRotation, p.beamDamping].every(Number.isFinite) ||
+              p.beamLength <= 0 || p.beamLength > 10 ||
+              p.beamAxial <= 0 || p.beamAxial > 1e10 ||
+              p.beamShear <= 0 || p.beamShear > 1e10 ||
+              p.beamRotation <= 0 || p.beamRotation > 1e10 ||
+              p.beamDamping < 0 || p.beamDamping > 2)) ||
           (p.foundationBlock !== undefined && typeof p.foundationBlock !== "boolean") ||
           (p.shape === "rectangle" &&
             (![p.width, p.height].every(Number.isFinite) ||
@@ -1457,7 +1490,7 @@ function particle(spec, p, a, ghost = false) {
       : spec.shape === "polygon"
         ? "#8d8978"
         : "#648e8955";
-  ctx.lineWidth = spec === selected ? 2.5 : spec.role === "lintel" ? 2 : 1;
+  ctx.lineWidth = spec === selected ? 2.5 : ["lintel", "rc-beam-segment"].includes(spec.role) ? 2 : 1;
   if (ghost) ctx.setLineDash([4, 4]);
   ctx.globalAlpha = ghost ? 1 : +$("#blockOpacity").value / 100;
   ctx.fill();
@@ -1470,7 +1503,7 @@ function particle(spec, p, a, ghost = false) {
     ctx.strokeStyle = "#5c918b66";
     ctx.stroke();
   }
-  if (!ghost && ["lintel", "load-spreader"].includes(spec.role)) {
+  if (!ghost && ["lintel", "load-spreader", "rc-beam-segment"].includes(spec.role)) {
     ctx.fillStyle =
       $("#blockColorMode").value === "load" &&
       (loadValues.get(spec.id) ?? 0) / loadColorReference > 0.55
@@ -1479,7 +1512,7 @@ function particle(spec, p, a, ghost = false) {
     ctx.font = "600 11px system-ui";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillText(spec.role === "load-spreader" ? "SPREADER" : "LINTEL", 0, 0);
+    ctx.fillText(spec.role === "load-spreader" ? "SPREADER" : spec.role === "rc-beam-segment" ? "RC" : "LINTEL", 0, 0);
   }
   ctx.restore();
   if (!ghost && spec.role === "imperfection") {
@@ -1519,7 +1552,7 @@ function arrow(p, x, y, color) {
 function draw() {
   loadValues =
     sim.time > 0
-      ? blockLoads(sim.items, sim.contacts, sim.config.gravity, sim.ties)
+      ? blockLoads(sim.items, sim.contacts, sim.config.gravity, sim.ties, sim.flexJoints)
       : new Map();
   loadColorReference =
     $("#loadScale").value === "fixed"
@@ -1577,6 +1610,18 @@ function draw() {
       ctx.fill();
       ctx.strokeStyle = "#1c769c";
       ctx.lineWidth = 1.5;
+      ctx.stroke();
+    }
+  }
+  for (const joint of sim.flexJoints) {
+    line(joint.pointA, joint.pointB, "#255f72", 3);
+    for (const p of [joint.pointA, joint.pointB]) {
+      const q = screen(p);
+      ctx.beginPath();
+      ctx.arc(q.x, q.y, 2.5, 0, Math.PI * 2);
+      ctx.fillStyle = "#d8eef1";
+      ctx.fill();
+      ctx.strokeStyle = "#255f72";
       ctx.stroke();
     }
   }
@@ -1791,7 +1836,7 @@ function draw() {
     const r = selected.residual;
     const cs = sim.contacts.filter((c) => c.a === selected || c.b === selected);
     $("#selection").innerHTML =
-      `<strong>Particle ${selected.id} · ${{ disk: "disk", square: "square", triangle: "triangle", rectangle: "rectangle", polygon: "polygonal block" }[selected.shape]}</strong>${selected.role ? `<p class="block-role">${{ brick: "Regular brick", "corner-stone": "Corner stone", "rounded-stone": "Rounded stone", rubble: "Irregular stone", lintel: "Monolithic lintel", "load-spreader": "Load-spreading block", imperfection: "Joint imperfection", sneck: "Sneck / flake", "loaded-stone": "Loaded stone", "traced-block": "Photo-traced block", "ground-connector": "Ground connector" }[selected.role]}</p>` : ""}<dl><dt>Mass</dt><dd>${selected.body.mass() < 0.001 ? selected.body.mass().toExponential(3) : selected.body.mass().toFixed(3)} kg</dd><dt>Load indicator</dt><dd>${(loadValues.get(selected.id) ?? 0).toFixed(2)} N</dd><dt>Horizontal load</dt><dd>${selected.loadX.toFixed(2)} N</dd><dt>Vertical load</dt><dd>${selected.load.toFixed(2)} N</dd><dt>Contacts</dt><dd>${cs.length}</dd><dt>Ties</dt><dd>${sim.ties.filter((t) => t.a === selected || t.b === selected).length}</dd><dt>Maximum normal force</dt><dd>${Math.max(0, ...cs.map((c) => c.fn)).toFixed(3)} N</dd><dt>Resultant Rx</dt><dd>${r.x.toFixed(3)} N</dd><dt>Resultant Ry</dt><dd>${r.y.toFixed(3)} N</dd><dt>Residual moment</dt><dd>${selected.torque.toFixed(3)} N·m</dd></dl>${sim.time === 0 ? '<p class="hint">Start the experiment to compute forces.</p>' : ""}`;
+      `<strong>Particle ${selected.id} · ${{ disk: "disk", square: "square", triangle: "triangle", rectangle: "rectangle", polygon: "polygonal block" }[selected.shape]}</strong>${selected.role ? `<p class="block-role">${{ brick: "Regular brick", "corner-stone": "Corner stone", "rounded-stone": "Rounded stone", rubble: "Irregular stone", lintel: "Monolithic lintel", "load-spreader": "Load-spreading block", imperfection: "Joint imperfection", sneck: "Sneck / flake", "loaded-stone": "Loaded stone", "traced-block": "Photo-traced block", "ground-connector": "Ground connector", "rc-beam-segment": "Deformable RC beam segment" }[selected.role]}</p>` : ""}<dl><dt>Mass</dt><dd>${selected.body.mass() < 0.001 ? selected.body.mass().toExponential(3) : selected.body.mass().toFixed(3)} kg</dd><dt>Load indicator</dt><dd>${(loadValues.get(selected.id) ?? 0).toFixed(2)} N</dd><dt>Horizontal load</dt><dd>${selected.loadX.toFixed(2)} N</dd><dt>Vertical load</dt><dd>${selected.load.toFixed(2)} N</dd><dt>Contacts</dt><dd>${cs.length}</dd><dt>Ties</dt><dd>${sim.ties.filter((t) => t.a === selected || t.b === selected).length}</dd><dt>Maximum normal force</dt><dd>${Math.max(0, ...cs.map((c) => c.fn)).toFixed(3)} N</dd><dt>Resultant Rx</dt><dd>${r.x.toFixed(3)} N</dd><dt>Resultant Ry</dt><dd>${r.y.toFixed(3)} N</dd><dt>Residual moment</dt><dd>${selected.torque.toFixed(3)} N·m</dd></dl>${sim.time === 0 ? '<p class="hint">Start the experiment to compute forces.</p>' : ""}`;
   } else
     $("#selection").textContent =
       "Click a particle to inspect its mass, forces and moment.";

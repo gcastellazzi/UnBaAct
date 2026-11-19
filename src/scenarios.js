@@ -156,7 +156,7 @@ function clipped(vertices, bottom = 0.015, top = TOP) {
     p = clipHalfPlane(p, nx, ny, l);
   return p;
 }
-function block(vertices, color, bottom = 0.015, top = TOP) {
+function block(vertices, color, bottom = 0.015, top = TOP, exact = false) {
   const p = clipped(vertices, bottom, top);
   if (p.length < 3) return null;
   let area = 0,
@@ -173,9 +173,10 @@ function block(vertices, color, bottom = 0.015, top = TOP) {
   if (Math.abs(area) < 0.025) return null;
   cx /= 3 * area;
   cy /= 3 * area;
+  const scale = exact ? 1 : 0.994;
   const local = p.map((v) => ({
-    x: (v.x - cx) * 0.994,
-    y: (v.y - cy) * 0.994,
+    x: (v.x - cx) * scale,
+    y: (v.y - cy) * scale,
   }));
   return {
     shape: "polygon",
@@ -380,20 +381,23 @@ export function generateOpus(id, seed = 42) {
 
 function cobbleWallWithBeam(rand, out) {
   const bottom = 0.015, wallTop = 6.48;
-  // Large, fairly regular stones represent the return-wall restraint at the
-  // two quoins. They remain individual dry-jointed blocks.
+  // Large rectangular stones represent the return-wall restraint at the two
+  // quoins. Their bed joints coincide exactly, without the visual shrink used
+  // for cobbles, so the regular blocks begin in direct contact.
   const edgeWidth = 1.34, rows = 8, h = (wallTop - bottom) / rows;
   for (let row = 0; row < rows; row++) {
     const y0 = bottom + row * h, y1 = y0 + h;
     for (const side of ["left", "right"]) {
       const l = side === "left" ? LEFT : RIGHT - edgeWidth;
       const r = side === "left" ? LEFT + edgeWidth : RIGHT;
-      const inset = 0.035 + rand() * 0.035;
-      const p = roundCorners(rect((l + r) / 2, (y0 + y1) / 2, r - l, y1 - y0), 0.12);
-      const b = block(p.map((q) => ({
-        x: q.x + (q.x < (l + r) / 2 ? inset : -inset),
-        y: q.y + (q.y < (y0 + y1) / 2 ? inset : -inset),
-      })), ["#8f948e", "#a6aaa2", "#7d8580"][row % 3], bottom, wallTop);
+      rand(); // Keep the seeded core layout stable after removing edge jitter.
+      const b = block(
+        rect((l + r) / 2, (y0 + y1) / 2, r - l, y1 - y0),
+        ["#8f948e", "#a6aaa2", "#7d8580"][row % 3],
+        bottom,
+        wallTop,
+        true,
+      );
       if (b) out.push({ ...b, role: "corner-stone" });
     }
   }

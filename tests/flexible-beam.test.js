@@ -37,8 +37,29 @@ test("cobble-wall preset separates corner, core and deformable RC-beam roles", (
   assert.equal(beam.length, 8);
   assert.deepEqual(beam.map((b) => b.beamIndex), [0, 1, 2, 3, 4, 5, 6, 7]);
   assert.deepEqual(beam.filter((b) => b.loadX).map((b) => b.loadX), [30000]);
-  assert.equal(blocks.filter((b) => b.role === "corner-stone").length, 16);
+  const corners = blocks.filter((b) => b.role === "corner-stone");
+  assert.equal(corners.length, 16);
   assert.ok(blocks.filter((b) => b.role === "rounded-stone").length > 60);
+
+  const bounds = (b) => {
+    const xs = [], ys = [];
+    for (let k = 0; k < b.vertices.length; k += 2) {
+      xs.push(b.x + b.vertices[k]);
+      ys.push(b.y + b.vertices[k + 1]);
+    }
+    return {
+      left: Math.min(...xs), right: Math.max(...xs),
+      bottom: Math.min(...ys), top: Math.max(...ys),
+    };
+  };
+  for (const side of [corners.filter((b) => b.x < 6), corners.filter((b) => b.x > 6)]) {
+    const courses = side.map(bounds).sort((a, b) => a.bottom - b.bottom);
+    assert.equal(courses.length, 8);
+    for (const course of courses)
+      assert.ok(Math.abs(course.right - course.left - 1.34) < 1e-9);
+    for (let k = 1; k < courses.length; k++)
+      assert.ok(Math.abs(courses[k - 1].top - courses[k].bottom) < 1e-9);
+  }
 });
 
 test("short side boundaries idealise return walls without touching the top beam", () => {

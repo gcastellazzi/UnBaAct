@@ -1,7 +1,7 @@
 import { test, before } from "node:test";
 import assert from "node:assert/strict";
 import { initialize, Simulation } from "../src/physics.js";
-import { generateOpus } from "../src/scenarios.js";
+import { generateOpus, RC_ELASTIC_FOUNDATION } from "../src/scenarios.js";
 import { flexibleBeamPairs } from "../src/flexible-beam.js";
 
 before(initialize);
@@ -79,6 +79,18 @@ test("double-width cobble wall doubles the span and beam segmentation", () => {
   assert.equal(wide.filter((b) => b.role === "corner-stone").length, 16);
   assert.equal(wide.filter((b) => b.role === "rounded-stone").length, 180);
   assert.deepEqual(wide.filter((b) => b.loadX).map((b) => b.loadX), [30000]);
+});
+
+test("5 m teaching case carries the stated load and RC bending stiffness", () => {
+  const blocks = generateOpus("rc-beam-cobble-wall-elastic-base", 42);
+  const beam = blocks.filter((b) => b.role === "rc-beam-segment");
+  assert.equal(beam.length, 5);
+  assert.equal(beam.reduce((sum, b) => sum + b.load, 0), 75000);
+  assert.ok(beam.every((b) => b.load === 15000));
+  assert.ok(beam.every((b) => Math.abs(b.beamRotation - 34.875e6) < 1e-6));
+  assert.equal(RC_ELASTIC_FOUNDATION.EI, 34.875e6);
+  assert.equal(RC_ELASTIC_FOUNDATION.k, 5e6);
+  assert.equal(RC_ELASTIC_FOUNDATION.right - RC_ELASTIC_FOUNDATION.left, 5);
 });
 
 test("short side boundaries idealise return walls without touching the top beam", () => {

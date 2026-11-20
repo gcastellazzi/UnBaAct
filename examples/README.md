@@ -19,6 +19,7 @@ Seven configurations inspired by the supplied reference images, in the same orde
 - [Window · irregular blocks + corner stones](Window_irregular_blocks_corner_stones.json): irregular stonework, regular corner stones and squared jambs supporting one monolithic lintel.
 - [RC ring beam · cobble wall](RC_ring_beam_cobble_wall.json): a segmented deformable ring beam above small rounded cobbles between larger quoin stones; a 30 kN horizontal end action reveals contact-load transfer toward idealised return-wall restraints.
 - [RC ring beam · double-width cobble wall](RC_ring_beam_double_width_cobble_wall.json): the same wall at exactly twice the span, with unchanged height and block scale, 180 rounded cobbles and a 16-segment deformable beam under the same 30 kN end action.
+- [RC ring beam · 5 m wall on elastic soil](RC_ring_beam_5m_cobble_wall_elastic_soil.json): the 5 m teaching case uses a 0.50 × 0.30 m RC beam with E = 31 GPa and EI = 34.875 MN·m² under q = 15 kN/m. The rigid floor is replaced by a beam of the same EI on editable Winkler soil (assumed k = 5,000 kN/m³).
 
 Three additional procedural examples reproduce the narrow, tall wall types in
 the supplied reference: **Slender wall · coursed stones**, **Slender wall ·

@@ -133,11 +133,39 @@ export const OPUS_SCENARIOS = [
     description:
       "A wall exactly twice as wide as the RC ring-beam example, with the same height, cobble scale, end restraints and 30 kN horizontal action. Sixteen deformable beam segments span the longer wall.",
   },
+  {
+    id: "rc-beam-cobble-wall-elastic-base",
+    name: "RC ring beam · 5 m wall on elastic soil",
+    source: "RC_ring_beam_5m_cobble_wall_elastic_soil",
+    description:
+      "A 5 m cobble wall with a 0.50 × 0.30 m RC ring beam (E = 31 GPa, EI = 34.875 MN·m²) under q = 15 kN/m. A beam with the same EI rests on editable Winkler soil; the stated soil k = 5,000 kN/m³ is a teaching assumption.",
+  },
 ];
 const LEFT = 1.025,
   RIGHT = 10.975,
   WIDE_RIGHT = LEFT + 2 * (RIGHT - LEFT),
   TOP = 7.75;
+export const RC_ELASTIC_FOUNDATION = Object.freeze({
+  model: "winkler",
+  pattern: "none",
+  rows: 1,
+  course: 0.25,
+  blockWidth: 0.65,
+  margin: 0,
+  k: 5e6,
+  shear: 0,
+  EI: 34.875e6,
+  depth: 0.3,
+  density: 2400,
+  damping: 0.7,
+  segments: 10,
+  seed: 42,
+  zone: "full",
+  zoneFraction: 0.4,
+  left: 3.5,
+  right: 8.5,
+  top: 0,
+});
 export function clipHalfPlane(vertices, nx, ny, limit) {
   const out = [];
   for (let k = 0; k < vertices.length; k++) {
@@ -330,6 +358,8 @@ export function generateOpus(id, seed = 42) {
     cobbleWallWithBeam(rand, out);
   } else if (id === "rc-beam-cobble-wall-wide") {
     cobbleWallWithBeam(rand, out, WIDE_RIGHT, 16, "top-ring-beam-wide");
+  } else if (id === "rc-beam-cobble-wall-elastic-base") {
+    calibratedCobbleWall(rand, out);
   } else if (id === "load-comparison") {
     for (const [distributed, offset] of [
       [false, 1.075],
@@ -460,6 +490,82 @@ function cobbleWallWithBeam(
   }
 }
 
+function calibratedCobbleWall(rand, out) {
+  const left = 3.5,
+    right = 8.5,
+    bottom = 0.015,
+    wallTop = 3,
+    edgeWidth = 0.65,
+    rows = 6,
+    course = (wallTop - bottom) / rows;
+  for (let row = 0; row < rows; row++) {
+    const y0 = bottom + row * course,
+      y1 = y0 + course;
+    for (const [l, r] of [
+      [left, left + edgeWidth],
+      [right - edgeWidth, right],
+    ]) {
+      rand();
+      const b = block(
+        rect((l + r) / 2, (y0 + y1) / 2, r - l, y1 - y0),
+        ["#8f948e", "#a6aaa2", "#7d8580"][row % 3],
+        bottom,
+        wallTop,
+        true,
+        left,
+        right,
+      );
+      if (b) out.push({ ...b, role: "corner-stone" });
+    }
+  }
+  stoneRegion(
+    out,
+    rand,
+    left + edgeWidth + 0.01,
+    right - edgeWidth - 0.01,
+    bottom,
+    wallTop,
+    true,
+    left,
+    right,
+    0.55,
+    0.5,
+  );
+
+  // Five 1 m segments carry qL = 75 kN as five equal 15 kN forces.
+  // For the rigid-segment chain, kθ = EI / segment length.
+  const segments = 5,
+    segmentLength = (right - left) / segments,
+    beamBottom = 3.02,
+    beamHeight = 0.3,
+    EI = 31e9 * 0.5 * beamHeight ** 3 / 12;
+  for (let k = 0; k < segments; k++) {
+    const l = left + k * segmentLength,
+      r = l + segmentLength,
+      b = block(
+        rect((l + r) / 2, beamBottom + beamHeight / 2, segmentLength, beamHeight),
+        "#7d9298",
+        beamBottom,
+        beamBottom + beamHeight,
+        false,
+        left,
+        right,
+      );
+    out.push({
+      ...b,
+      role: "rc-beam-segment",
+      beamId: "top-ring-beam-calibrated",
+      beamIndex: k,
+      beamLength: segmentLength * 0.994,
+      beamAxial: 2e8,
+      beamShear: 1e8,
+      beamRotation: EI / segmentLength,
+      beamDamping: 0.12,
+      load: 15000,
+    });
+  }
+}
+
 // Rounded convex stones stay inside their Voronoi cells: no initial overlap.
 function roundCorners(p, amount = 0.24) {
   const points = [];
@@ -495,9 +601,11 @@ function stoneRegion(
   rounded = false,
   clipLeft = LEFT,
   clipRight = RIGHT,
+  nominalWidth = 0.87,
+  nominalHeight = 0.73,
 ) {
-  const cols = Math.max(1, Math.round((right - left) / 0.87)),
-    rows = Math.max(1, Math.round((top - bottom) / 0.73)),
+  const cols = Math.max(1, Math.round((right - left) / nominalWidth)),
+    rows = Math.max(1, Math.round((top - bottom) / nominalHeight)),
     seeds = [];
   for (let row = 0; row < rows; row++)
     for (let col = 0; col < cols; col++)

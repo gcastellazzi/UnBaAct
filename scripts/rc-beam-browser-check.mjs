@@ -60,8 +60,22 @@ try {
   const wide = JSON.parse(readFileSync("/tmp/unbaact-rc-beam-cobble-wall-wide.json"));
   assert.equal(wide.config.bounds.right, 20.95);
   assert.equal(wide.particles.filter((p) => p.role === "rc-beam-segment").length, 16);
+
+  await page.selectOption("#opus", "rc-beam-cobble-wall-elastic-base");
+  await page.click("#loadOpus");
+  assert.equal(Number(await page.locator("#particles").innerText()), 59);
+  assert.equal(await page.inputValue("#thickness"), "0.5");
+  assert.match(await page.locator("#baseStatus").textContent(), /Winkler active/);
+  await canvas.screenshot({ path: "/tmp/unbaact-rc-beam-cobble-wall-elastic-base.png" });
+  const elasticDownload = page.waitForEvent("download");
+  await page.click("#export");
+  await (await elasticDownload).saveAs("/tmp/unbaact-rc-beam-cobble-wall-elastic-base.json");
+  const elastic = JSON.parse(readFileSync("/tmp/unbaact-rc-beam-cobble-wall-elastic-base.json"));
+  assert.equal(elastic.config.elasticBase.EI, 34.875e6);
+  assert.equal(elastic.config.elasticBase.k, 5e6);
+  assert.equal(elastic.particles.reduce((sum, p) => sum + (p.load || 0), 0), 75000);
   assert.deepEqual(errors, []);
-  console.log("RC beam/cobble wall browser OK: standard and double-width presets, units, selection, 30 kN load, contacts, rendering and JSON persistence.");
+  console.log("RC beam/cobble wall browser OK: standard, double-width and 5 m elastic-soil presets, units, loads, contacts, rendering and JSON persistence.");
 } finally {
   await browser.close();
 }

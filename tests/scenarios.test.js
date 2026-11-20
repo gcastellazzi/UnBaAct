@@ -1,7 +1,11 @@
 import { test, before } from "node:test";
 import assert from "node:assert/strict";
 import { initialize, Simulation } from "../src/physics.js";
-import { OPUS_SCENARIOS, generateOpus } from "../src/scenarios.js";
+import {
+  OPUS_SCENARIOS,
+  RC_ELASTIC_FOUNDATION,
+  generateOpus,
+} from "../src/scenarios.js";
 before(initialize);
 function vertices(b) {
   return Array.from({ length: b.vertices.length / 2 }, (_, k) => ({
@@ -30,6 +34,7 @@ for (const scenario of OPUS_SCENARIOS) {
   test(`${scenario.id}: reproducible geometry without overlap, valid simulation`, () => {
     const blocks = generateOpus(scenario.id, 42);
     const wide = scenario.id === "rc-beam-cobble-wall-wide";
+    const elastic = scenario.id === "rc-beam-cobble-wall-elastic-base";
     const right = wide ? 20.925 : 10.975;
     assert.deepEqual(blocks, generateOpus(scenario.id, 42));
     assert.ok(blocks.length > 20 && blocks.length < 400);
@@ -44,6 +49,12 @@ for (const scenario of OPUS_SCENARIOS) {
         assert.ok(!overlap(polys[i], polys[j]), `blocks ${i},${j} overlap`);
     const sim = new Simulation(wide ? {
       bounds: { left: 1, right: 20.95, bottom: 0, top: 8, sideWallTop: 6.5 },
+    } : elastic ? {
+      boundary: "cup",
+      thickness: 0.5,
+      materialDensity: 1800,
+      bounds: { left: 3.475, right: 8.525, bottom: 0, top: 4, sideWallTop: 3.32 },
+      elasticBase: RC_ELASTIC_FOUNDATION,
     } : undefined);
     try {
       blocks.forEach((b) => sim.add(b));

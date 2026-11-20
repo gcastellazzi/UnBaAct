@@ -23,7 +23,11 @@ import { interfaceHTML } from "./ui.js";
 import { setupAnalysis } from "./analysis-ui.js";
 import { detectStones } from "./stone-detect.js";
 import { analysisExample, EXAMPLE_SETTINGS } from "./analysis-examples.js";
-import { OPUS_SCENARIOS, generateOpus } from "./scenarios.js";
+import {
+  OPUS_SCENARIOS,
+  RC_ELASTIC_FOUNDATION,
+  generateOpus,
+} from "./scenarios.js";
 import "./style.css";
 import {
   initialize,
@@ -444,17 +448,18 @@ $("#loadOpus").onclick = () => {
     modelBounds = { left: 1, right: 11, bottom: 0, top: 4.5 };
   if ($("#opus").value.startsWith("rc-beam-cobble-wall")) {
     const wide = $("#opus").value === "rc-beam-cobble-wall-wide";
+    const elastic = $("#opus").value === "rc-beam-cobble-wall-elastic-base";
     modelBounds = {
-      left: 1,
-      right: wide ? 20.95 : 11,
+      left: elastic ? 3.475 : 1,
+      right: elastic ? 8.525 : wide ? 20.95 : 11,
       bottom: 0,
-      top: 8,
-      sideWallTop: 6.5,
+      top: elastic ? 4 : 8,
+      sideWallTop: elastic ? 3.32 : 6.5,
     };
     $("#boundary").value = "cup";
     $("#leftWall").checked = true;
     $("#rightWall").checked = true;
-    $("#thickness").value = 0.3;
+    $("#thickness").value = elastic ? 0.5 : 0.3;
     $("#density").value = 1800;
     $("#mu").value = 0.65;
     groups = defaultGroups(0.65);
@@ -465,10 +470,13 @@ $("#loadOpus").onclick = () => {
     $("#blockColorMode").dispatchEvent(new Event("change"));
     $("#loadScale").value = "fixed";
     $("#loadScale").dispatchEvent(new Event("change"));
-    $("#loadReference").value = 100000;
+    $("#loadReference").value = elastic ? 30000 : 100000;
     $("#initial").checked = true;
   }
-  rebuild(generateOpus($("#opus").value, +$("#seed").value));
+  const support = $("#opus").value === "rc-beam-cobble-wall-elastic-base"
+    ? { ...RC_ELASTIC_FOUNDATION }
+    : null;
+  rebuild(generateOpus($("#opus").value, +$("#seed").value), [], support);
   $("#tool").value = "select";
   message("Example loaded. Press Play to test stability.");
 };

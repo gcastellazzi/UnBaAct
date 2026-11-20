@@ -22,6 +22,40 @@ quoin bands at each end. Its beam has sixteen equal segments and fifteen joints;
 the applied horizontal action remains 30 kN so students can compare the effect
 of span without also changing the load.
 
+## Five-metre case on elastic soil
+
+The third preset translates the numerical teaching case into the interactive
+model:
+
+| Input | Value |
+| --- | ---: |
+| Wall and beam span, L | 5.00 m |
+| Uniform vertical load, q | 15 kN/m |
+| RC section, b × h | 0.50 × 0.30 m |
+| Concrete modulus, E | 31,000 MPa |
+| Second moment, I = bh³/12 | 1.125 × 10⁻³ m⁴ |
+| RC bending stiffness, EI | 34.875 MN·m² |
+| Disordered-stone reference modulus | 870 MPa |
+| Reference masonry-band EI | 0.979 MN·m² |
+| Elastic-beam midspan deflection, RC | 3.50 mm |
+| Elastic-beam midspan deflection, masonry reference | 124.6 mm |
+
+The total applied load is 75 kN. It is represented by five 15 kN vertical
+forces, one at each 1 m beam segment. The rotational spring between segments is
+set to `EI / 1 m = 34.875 MN·m/rad`; axial and shear penalties keep adjacent
+segments compatible. The rigid blocks below remain a contact model, so the
+124.6 mm value is a reference from the equivalent linear-elastic masonry band,
+not a target displacement imposed on the stones.
+
+The rigid floor is replaced by a 0.30 m deep transfer beam with the same
+34.875 MN·m² bending stiffness on a full-span Winkler bed. Because the source
+case does not specify soil properties, the preset explicitly assumes
+`k = 5,000 kN/m³`. This value is editable under **Build → Foundation & elastic
+soil**. It should be varied parametrically and must not be presented as a
+measured site value. The base model uses bilateral springs and small-deflection
+bending; it can show settlement and load redistribution but not soil yielding
+or loss of ground contact.
+
 ## Suggested in-app comparison
 
 1. Load **Masonry examples → RC ring beam · cobble wall** and press Play.

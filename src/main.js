@@ -442,8 +442,15 @@ $("#loadOpus").onclick = () => {
   }
   if ($("#opus").value === "load-comparison")
     modelBounds = { left: 1, right: 11, bottom: 0, top: 4.5 };
-  if ($("#opus").value === "rc-beam-cobble-wall") {
-    modelBounds = { left: 1, right: 11, bottom: 0, top: 8, sideWallTop: 6.5 };
+  if ($("#opus").value.startsWith("rc-beam-cobble-wall")) {
+    const wide = $("#opus").value === "rc-beam-cobble-wall-wide";
+    modelBounds = {
+      left: 1,
+      right: wide ? 20.95 : 11,
+      bottom: 0,
+      top: 8,
+      sideWallTop: 6.5,
+    };
     $("#boundary").value = "cup";
     $("#leftWall").checked = true;
     $("#rightWall").checked = true;

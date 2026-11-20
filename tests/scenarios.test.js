@@ -29,18 +29,22 @@ function overlap(a, b) {
 for (const scenario of OPUS_SCENARIOS) {
   test(`${scenario.id}: reproducible geometry without overlap, valid simulation`, () => {
     const blocks = generateOpus(scenario.id, 42);
+    const wide = scenario.id === "rc-beam-cobble-wall-wide";
+    const right = wide ? 20.925 : 10.975;
     assert.deepEqual(blocks, generateOpus(scenario.id, 42));
     assert.ok(blocks.length > 20 && blocks.length < 400);
     const polys = blocks.map(vertices);
     for (const p of polys)
       for (const v of p) {
-        assert.ok(v.x >= 1.025 - 1e-7 && v.x <= 10.975 + 1e-7);
+        assert.ok(v.x >= 1.025 - 1e-7 && v.x <= right + 1e-7);
         assert.ok(v.y >= 0.015 - 1e-7 && v.y <= 7.75 + 1e-7);
       }
     for (let i = 0; i < polys.length; i++)
       for (let j = i + 1; j < polys.length; j++)
         assert.ok(!overlap(polys[i], polys[j]), `blocks ${i},${j} overlap`);
-    const sim = new Simulation();
+    const sim = new Simulation(wide ? {
+      bounds: { left: 1, right: 20.95, bottom: 0, top: 8, sideWallTop: 6.5 },
+    } : undefined);
     try {
       blocks.forEach((b) => sim.add(b));
       const specs = sim.specs();

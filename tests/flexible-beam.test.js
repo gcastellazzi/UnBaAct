@@ -62,6 +62,25 @@ test("cobble-wall preset separates corner, core and deformable RC-beam roles", (
   }
 });
 
+test("double-width cobble wall doubles the span and beam segmentation", () => {
+  const regular = generateOpus("rc-beam-cobble-wall", 42);
+  const wide = generateOpus("rc-beam-cobble-wall-wide", 42);
+  const extent = (blocks) => {
+    const xs = blocks.flatMap((b) => {
+      const out = [];
+      for (let k = 0; k < b.vertices.length; k += 2)
+        out.push(b.x + b.vertices[k]);
+      return out;
+    });
+    return Math.max(...xs) - Math.min(...xs);
+  };
+  assert.ok(Math.abs(extent(wide) - 2 * extent(regular)) < 1e-9);
+  assert.equal(wide.filter((b) => b.role === "rc-beam-segment").length, 16);
+  assert.equal(wide.filter((b) => b.role === "corner-stone").length, 16);
+  assert.equal(wide.filter((b) => b.role === "rounded-stone").length, 180);
+  assert.deepEqual(wide.filter((b) => b.loadX).map((b) => b.loadX), [30000]);
+});
+
 test("short side boundaries idealise return walls without touching the top beam", () => {
   const sim = new Simulation({
     boundary: "cup",

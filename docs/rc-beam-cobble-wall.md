@@ -15,6 +15,13 @@ The ring beam comprises eight rigid segments. Seven penalty joints transmit axia
 
 A 30 kN horizontal action is applied at the centre of the left segment. Beam-to-wall transfer is only by frictional contact: no bond or anchor is inserted. The physics timestep is subdivided automatically according to joint frequency.
 
+The companion **RC ring beam · double-width cobble wall** example keeps the
+same 6.465 m wall height and block scale while doubling the wall span from
+9.95 m to 19.90 m. It contains 180 rounded cobbles between the same eight-block
+quoin bands at each end. Its beam has sixteen equal segments and fifteen joints;
+the applied horizontal action remains 30 kN so students can compare the effect
+of span without also changing the load.
+
 ## Suggested in-app comparison
 
 1. Load **Masonry examples → RC ring beam · cobble wall** and press Play.

@@ -126,9 +126,17 @@ export const OPUS_SCENARIOS = [
     description:
       "A deformable segmented RC ring beam transfers a 30 kN horizontal end action to a compliant cobble fabric between larger corner stones. Use load shading and contact forces; this is a qualitative compatibility model, not a retrofit design check.",
   },
+  {
+    id: "rc-beam-cobble-wall-wide",
+    name: "RC ring beam · double-width cobble wall",
+    source: "RC_ring_beam_double_width_cobble_wall",
+    description:
+      "A wall exactly twice as wide as the RC ring-beam example, with the same height, cobble scale, end restraints and 30 kN horizontal action. Sixteen deformable beam segments span the longer wall.",
+  },
 ];
 const LEFT = 1.025,
   RIGHT = 10.975,
+  WIDE_RIGHT = LEFT + 2 * (RIGHT - LEFT),
   TOP = 7.75;
 export function clipHalfPlane(vertices, nx, ny, limit) {
   const out = [];
@@ -145,19 +153,27 @@ export function clipHalfPlane(vertices, nx, ny, limit) {
   }
   return out;
 }
-function clipped(vertices, bottom = 0.015, top = TOP) {
+function clipped(vertices, bottom = 0.015, top = TOP, left = LEFT, right = RIGHT) {
   let p = vertices;
   for (const [nx, ny, l] of [
-    [-1, 0, -LEFT],
-    [1, 0, RIGHT],
+    [-1, 0, -left],
+    [1, 0, right],
     [0, -1, -bottom],
     [0, 1, top],
   ])
     p = clipHalfPlane(p, nx, ny, l);
   return p;
 }
-function block(vertices, color, bottom = 0.015, top = TOP, exact = false) {
-  const p = clipped(vertices, bottom, top);
+function block(
+  vertices,
+  color,
+  bottom = 0.015,
+  top = TOP,
+  exact = false,
+  left = LEFT,
+  right = RIGHT,
+) {
+  const p = clipped(vertices, bottom, top, left, right);
   if (p.length < 3) return null;
   let area = 0,
     cx = 0,
@@ -312,6 +328,8 @@ export function generateOpus(id, seed = 42) {
     loaded.role = "loaded-stone";
   } else if (id === "rc-beam-cobble-wall") {
     cobbleWallWithBeam(rand, out);
+  } else if (id === "rc-beam-cobble-wall-wide") {
+    cobbleWallWithBeam(rand, out, WIDE_RIGHT, 16, "top-ring-beam-wide");
   } else if (id === "load-comparison") {
     for (const [distributed, offset] of [
       [false, 1.075],
@@ -379,7 +397,13 @@ export function generateOpus(id, seed = 42) {
   return out;
 }
 
-function cobbleWallWithBeam(rand, out) {
+function cobbleWallWithBeam(
+  rand,
+  out,
+  rightEdge = RIGHT,
+  beamSegments = 8,
+  beamId = "top-ring-beam",
+) {
   const bottom = 0.015, wallTop = 6.48;
   // Large rectangular stones represent the return-wall restraint at the two
   // quoins. Their bed joints coincide exactly, without the visual shrink used
@@ -388,8 +412,8 @@ function cobbleWallWithBeam(rand, out) {
   for (let row = 0; row < rows; row++) {
     const y0 = bottom + row * h, y1 = y0 + h;
     for (const side of ["left", "right"]) {
-      const l = side === "left" ? LEFT : RIGHT - edgeWidth;
-      const r = side === "left" ? LEFT + edgeWidth : RIGHT;
+      const l = side === "left" ? LEFT : rightEdge - edgeWidth;
+      const r = side === "left" ? LEFT + edgeWidth : rightEdge;
       rand(); // Keep the seeded core layout stable after removing edge jitter.
       const b = block(
         rect((l + r) / 2, (y0 + y1) / 2, r - l, y1 - y0),
@@ -397,22 +421,34 @@ function cobbleWallWithBeam(rand, out) {
         bottom,
         wallTop,
         true,
+        LEFT,
+        rightEdge,
       );
       if (b) out.push({ ...b, role: "corner-stone" });
     }
   }
-  stoneRegion(out, rand, LEFT + edgeWidth + 0.015, RIGHT - edgeWidth - 0.015, bottom, wallTop, true);
+  stoneRegion(
+    out,
+    rand,
+    LEFT + edgeWidth + 0.015,
+    rightEdge - edgeWidth - 0.015,
+    bottom,
+    wallTop,
+    true,
+    LEFT,
+    rightEdge,
+  );
 
-  const n = 8, beamBottom = 6.52, beamHeight = 0.5;
-  const length = (RIGHT - LEFT) / n;
+  const n = beamSegments, beamBottom = 6.52, beamHeight = 0.5;
+  const length = (rightEdge - LEFT) / n;
   for (let k = 0; k < n; k++) {
     const left = LEFT + k * length, right = left + length;
     const b = block(rect((left + right) / 2, beamBottom + beamHeight / 2, length, beamHeight),
-      "#7d9298", beamBottom, beamBottom + beamHeight);
+      "#7d9298", beamBottom, beamBottom + beamHeight, false, LEFT, rightEdge);
     out.push({
       ...b,
       role: "rc-beam-segment",
-      beamId: "top-ring-beam",
+      beamId,
       beamIndex: k,
       beamLength: length * 0.994,
       beamAxial: 5e7,
@@ -449,7 +485,17 @@ function roundCorners(p, amount = 0.24) {
   }
   return points;
 }
-function stoneRegion(out, rand, left, right, bottom, top, rounded = false) {
+function stoneRegion(
+  out,
+  rand,
+  left,
+  right,
+  bottom,
+  top,
+  rounded = false,
+  clipLeft = LEFT,
+  clipRight = RIGHT,
+) {
   const cols = Math.max(1, Math.round((right - left) / 0.87)),
     rows = Math.max(1, Math.round((top - bottom) / 0.73)),
     seeds = [];
@@ -485,6 +531,9 @@ function stoneRegion(out, rand, left, right, bottom, top, rounded = false) {
       palette[Math.floor(rand() * palette.length)],
       bottom,
       top,
+      false,
+      clipLeft,
+      clipRight,
     );
     if (b) out.push({ ...b, role: rounded ? "rounded-stone" : "rubble" });
   }

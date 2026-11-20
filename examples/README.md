@@ -18,6 +18,7 @@ Seven configurations inspired by the supplied reference images, in the same orde
 - [Window · regular bricks](Window_regular_bricks.json): staggered brickwork around a central opening, with one monolithic lintel.
 - [Window · irregular blocks + corner stones](Window_irregular_blocks_corner_stones.json): irregular stonework, regular corner stones and squared jambs supporting one monolithic lintel.
 - [RC ring beam · cobble wall](RC_ring_beam_cobble_wall.json): a segmented deformable ring beam above small rounded cobbles between larger quoin stones; a 30 kN horizontal end action reveals contact-load transfer toward idealised return-wall restraints.
+- [RC ring beam · double-width cobble wall](RC_ring_beam_double_width_cobble_wall.json): the same wall at exactly twice the span, with unchanged height and block scale, 180 rounded cobbles and a 16-segment deformable beam under the same 30 kN end action.
 
 Three additional procedural examples reproduce the narrow, tall wall types in
 the supplied reference: **Slender wall · coursed stones**, **Slender wall ·

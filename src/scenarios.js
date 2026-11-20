@@ -357,7 +357,7 @@ export function generateOpus(id, seed = 42) {
   } else if (id === "rc-beam-cobble-wall") {
     cobbleWallWithBeam(rand, out);
   } else if (id === "rc-beam-cobble-wall-wide") {
-    cobbleWallWithBeam(rand, out, WIDE_RIGHT, 16, "top-ring-beam-wide");
+    cobbleWallWithBeam(rand, out, WIDE_RIGHT, 16, "top-ring-beam-wide", 0.002);
   } else if (id === "rc-beam-cobble-wall-elastic-base") {
     calibratedCobbleWall(rand, out);
   } else if (id === "load-comparison") {
@@ -433,6 +433,7 @@ function cobbleWallWithBeam(
   rightEdge = RIGHT,
   beamSegments = 8,
   beamId = "top-ring-beam",
+  edgeJoint = 0,
 ) {
   const bottom = 0.015, wallTop = 6.48;
   // Large rectangular stones represent the return-wall restraint at the two
@@ -440,7 +441,10 @@ function cobbleWallWithBeam(
   // for cobbles, so the regular blocks begin in direct contact.
   const edgeWidth = 1.34, rows = 8, h = (wallTop - bottom) / rows;
   for (let row = 0; row < rows; row++) {
-    const y0 = bottom + row * h, y1 = y0 + h;
+    const courseBottom = bottom + row * h,
+      courseTop = courseBottom + h,
+      y0 = courseBottom + (row > 0 ? edgeJoint / 2 : 0),
+      y1 = courseTop - (row < rows - 1 ? edgeJoint / 2 : 0);
     for (const side of ["left", "right"]) {
       const l = side === "left" ? LEFT : rightEdge - edgeWidth;
       const r = side === "left" ? LEFT + edgeWidth : rightEdge;

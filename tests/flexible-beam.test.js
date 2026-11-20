@@ -79,6 +79,20 @@ test("double-width cobble wall doubles the span and beam segmentation", () => {
   assert.equal(wide.filter((b) => b.role === "corner-stone").length, 16);
   assert.equal(wide.filter((b) => b.role === "rounded-stone").length, 180);
   assert.deepEqual(wide.filter((b) => b.loadX).map((b) => b.loadX), [30000]);
+
+  const verticalBounds = (b) => {
+    const ys = [];
+    for (let k = 1; k < b.vertices.length; k += 2) ys.push(b.y + b.vertices[k]);
+    return { bottom: Math.min(...ys), top: Math.max(...ys) };
+  };
+  for (const side of [
+    wide.filter((b) => b.role === "corner-stone" && b.x < 6),
+    wide.filter((b) => b.role === "corner-stone" && b.x > 16),
+  ]) {
+    const courses = side.map(verticalBounds).sort((a, b) => a.bottom - b.bottom);
+    for (let k = 1; k < courses.length; k++)
+      assert.ok(Math.abs(courses[k].bottom - courses[k - 1].top - 0.002) < 1e-9);
+  }
 });
 
 test("5 m teaching case carries the stated load and RC bending stiffness", () => {
